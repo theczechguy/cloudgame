@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { GameNode, GameEdge, Packet, GameState } from '../engine/types';
-import { SERVICE_CATALOG } from '../services/catalog';
+import type { GameNode, GameEdge, GameState, Packet } from '../engine/types';
+// Base stats moved to catalog, but logic here mainly state container
 
 type IncomeEvent = { t: number; amt: number };
 
@@ -36,19 +36,25 @@ export const useGameStore = create<GameStore>((set) => ({
         'lb-1': { id: 'lb-1', type: 'load-balancer', position: { x: 1300, y: 1900 }, label: 'Load Balancer', queue: [], maxQueueSize: 20, processingSpeed: 100, utilization: 0 },
 
         // Compute Layer
-        'vm-1': { id: 'vm-1', type: 'vm', position: { x: 1000, y: 2200 }, label: 'VM Cluster', queue: [], maxQueueSize: 10, processingSpeed: 10, processingMultiplier: 2, utilization: 0 },
-        'app-1': { id: 'app-1', type: 'app-service', position: { x: 1300, y: 2200 }, label: 'App Service', queue: [], maxQueueSize: 15, processingSpeed: 20, processingMultiplier: 3, utilization: 0 },
-        'func-1': { id: 'func-1', type: 'function-app', position: { x: 1600, y: 2200 }, label: 'Function App', queue: [], maxQueueSize: 5, processingSpeed: 6, processingMultiplier: 1.2, utilization: 0, freeRequestsRemaining: 1000 },
+        'vm-1': { id: 'vm-1', type: 'vm', position: { x: 1000, y: 2200 }, regionId: 'r1', label: 'VM Cluster', queue: [], maxQueueSize: 10, processingSpeed: 10, processingMultiplier: 2, utilization: 0 },
+        'app-1': { id: 'app-1', type: 'app-service', position: { x: 1300, y: 2200 }, regionId: 'r1', label: 'App Service', queue: [], maxQueueSize: 15, processingSpeed: 20, processingMultiplier: 3, utilization: 0 },
+        'func-1': { id: 'func-1', type: 'function-app', position: { x: 1600, y: 2200 }, regionId: 'r1', label: 'Function App', queue: [], maxQueueSize: 5, processingSpeed: 6, processingMultiplier: 1.2, utilization: 0, freeRequestsRemaining: 1000 },
 
         // Data Layer
-        'sql-1': { id: 'sql-1', type: 'sql-db', position: { x: 1150, y: 2600 }, label: 'Primary DB', queue: [], maxQueueSize: 100, processingSpeed: 10, processingMultiplier: 1.5, utilization: 0 },
-        'redis-1': { id: 'redis-1', type: 'redis', position: { x: 1300, y: 2500 }, label: 'Redis Cache', queue: [], maxQueueSize: 0, processingSpeed: 100, utilization: 0 },
-        'blob-1': { id: 'blob-1', type: 'blob-storage', position: { x: 1600, y: 2600 }, label: 'Blob Storage', queue: [], maxQueueSize: 50, processingSpeed: 20, utilization: 0 },
+        'sql-1': { id: 'sql-1', type: 'sql-db', position: { x: 1150, y: 2600 }, regionId: 'r1', label: 'Primary DB', queue: [], maxQueueSize: 100, processingSpeed: 10, processingMultiplier: 1.5, utilization: 0 },
+        'redis-1': { id: 'redis-1', type: 'redis', position: { x: 1300, y: 2500 }, regionId: 'r1', label: 'Redis Cache', queue: [], maxQueueSize: 0, processingSpeed: 100, utilization: 0 },
+        'blob-1': { id: 'blob-1', type: 'blob-storage', position: { x: 1600, y: 2600 }, regionId: 'r1', label: 'Blob Storage', queue: [], maxQueueSize: 50, processingSpeed: 20, utilization: 0 },
 
         // Monitor
         'monitor-1': { id: 'monitor-1', type: 'azure-monitor', position: { x: 1800, y: 1400 }, label: 'Azure Monitor', queue: [], maxQueueSize: 0, processingSpeed: 0, utilization: 0 }
     },
     nodeIds: ['internet-1', 'tm-1', 'fw-1', 'lb-1', 'vm-1', 'app-1', 'func-1', 'sql-1', 'redis-1', 'blob-1', 'monitor-1'],
+
+    // Initial Regions
+    regions: {
+        'r1': { id: 'r1', label: 'North America', x: 900, y: 2100, width: 900, height: 600, geoId: 'North America' }
+    },
+
     edges: {
         'e1': { id: 'e1', source: 'internet-1', target: 'tm-1' },
         'e2': { id: 'e2', source: 'tm-1', target: 'fw-1' },
@@ -177,7 +183,7 @@ export const useGameStore = create<GameStore>((set) => ({
 
 
     // Region Actions
-    regions: {},
+    // regions initialized above
     addRegion: (region) => set((state) => {
         // 1. Add the new region
         const newRegions = { ...state.regions, [region.id]: region };
@@ -284,7 +290,7 @@ export const useGameStore = create<GameStore>((set) => ({
         };
     }),
 
-    updatePackets: (packets) => set({ packets }),
+    updatePackets: (packets: Packet[]) => set({ packets }),
 
     duplicateNodes: (idsToDuplicate: string[]) => {
         let newIds: string[] = [];

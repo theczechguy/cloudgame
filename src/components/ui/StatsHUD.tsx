@@ -3,7 +3,7 @@ import { useGameStore } from '../../store/gameStore';
 import { SERVICE_CATALOG } from '../../services/catalog';
 
 export const StatsHUD: React.FC = () => {
-    const isMonitored = useGameStore(s => s.isMonitored);
+
     const addRegion = useGameStore(s => s.addRegion); // Debug
     const nodes = useGameStore((state) => state.nodes);
     const nodeIds = useGameStore((state) => state.nodeIds);

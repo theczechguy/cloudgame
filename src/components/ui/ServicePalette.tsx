@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SERVICE_CATALOG } from '../../services/catalog';
 import type { NodeType } from '../../engine/types';
 
@@ -7,6 +7,7 @@ import { useGameStore } from '../../store/gameStore';
 export const ServicePalette: React.FC = () => {
     const money = useGameStore((state) => state.money);
     const sandboxMode = useGameStore((state) => state.sandboxMode);
+    const [hoveredService, setHoveredService] = useState<NodeType | null>(null);
 
     const handleDragStart = (e: React.DragEvent, type: NodeType, canAfford: boolean) => {
         if (!canAfford) {
@@ -18,12 +19,35 @@ export const ServicePalette: React.FC = () => {
     };
 
     return (
-        <div className="absolute top-4 right-4 z-50 bg-azure-panel border border-azure-border rounded-lg shadow-xl p-4 w-64 flex flex-col max-h-[90vh]">
-            <h3 className="text-white font-bold mb-4 border-b border-azure-border pb-2 flex justify-between items-center shrink-0">
-                Services
-                {sandboxMode && <span className="text-[10px] bg-yellow-600 px-1 rounded text-white">SANDBOX</span>}
-            </h3>
-            <div className="space-y-3 overflow-y-auto flex-1 pr-1 custom-scrollbar">
+        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center">
+
+            {/* Tooltip Area - Fixed height above dock to prevent jumping */}
+            <div className="h-24 mb-2 flex items-end justify-center pointer-events-none w-[500px]">
+                {hoveredService && (
+                    <div className="bg-gray-900/95 border border-azure-border rounded-lg p-3 shadow-xl text-center backdrop-blur-md animate-fade-in-up">
+                        <div className="flex items-center justify-center gap-2 mb-1">
+                            <span className="text-xl text-azure-blue">
+                                {SERVICE_CATALOG.find(s => s.type === hoveredService)?.icon}
+                            </span>
+                            <span className="font-bold text-white">
+                                {SERVICE_CATALOG.find(s => s.type === hoveredService)?.label}
+                            </span>
+                        </div>
+                        <p className="text-gray-400 text-xs max-w-xs">
+                            {SERVICE_CATALOG.find(s => s.type === hoveredService)?.description}
+                        </p>
+                    </div>
+                )}
+            </div>
+
+            {/* Dock Container */}
+            <div className="bg-gray-900/80 border border-gray-700 rounded-2xl shadow-2xl p-2 flex gap-2 backdrop-blur-md transition-all hover:bg-gray-900/90">
+                {sandboxMode && (
+                    <div className="absolute -top-3 right-4 bg-yellow-600 text-white text-[10px] px-2 rounded-full font-bold shadow-sm">
+                        SANDBOX
+                    </div>
+                )}
+
                 {SERVICE_CATALOG.map((service) => {
                     const canAfford = sandboxMode || money >= service.cost;
                     return (
@@ -31,22 +55,23 @@ export const ServicePalette: React.FC = () => {
                             key={service.type}
                             draggable={canAfford}
                             onDragStart={(e) => handleDragStart(e, service.type, canAfford)}
-                            className={`p-3 rounded transition-colors border border-transparent 
+                            onMouseEnter={() => setHoveredService(service.type)}
+                            onMouseLeave={() => setHoveredService(null)}
+                            className={`
+                                group relative w-16 h-16 rounded-xl flex flex-col items-center justify-center
+                                transition-all duration-200 border border-transparent
                                 ${canAfford
-                                    ? 'bg-gray-700/50 hover:bg-gray-700 hover:border-gray-500 cursor-grab active:cursor-grabbing'
-                                    : 'bg-gray-800/50 opacity-50 cursor-not-allowed grayscale'}
+                                    ? 'hover:bg-gray-700/80 hover:scale-110 hover:-translate-y-1 hover:shadow-lg hover:border-gray-500 cursor-grab active:cursor-grabbing bg-gray-800/40'
+                                    : 'bg-gray-800/20 opacity-40 cursor-not-allowed grayscale'
+                                }
                             `}
                         >
-                            <div className="flex items-center gap-3 mb-1">
-                                <span className="text-2xl">{service.icon}</span>
-                                <div className="flex-1">
-                                    <div className="font-bold text-sm text-gray-200">{service.label}</div>
-                                    <div className={`text-xs font-mono ${canAfford ? 'text-green-400' : 'text-red-400'}`}>${service.cost}</div>
-                                </div>
-                            </div>
-                            <div className="text-[10px] text-gray-400 leading-tight">
-                                {service.description}
-                            </div>
+                            <span className="text-2xl mb-1 filter drop-shadow-md group-hover:drop-shadow-lg transition-transform">
+                                {service.icon}
+                            </span>
+                            <span className={`text-[10px] font-mono font-bold ${canAfford ? 'text-green-400' : 'text-red-400'}`}>
+                                ${service.cost}
+                            </span>
                         </div>
                     );
                 })}

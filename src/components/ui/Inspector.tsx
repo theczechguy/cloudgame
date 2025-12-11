@@ -14,8 +14,7 @@ export const Inspector: React.FC = () => {
     const updateRegion = useGameStore((state) => state.updateRegion);
 
     // Determine what to show
-    // Priority: Region > Single Node > Multi Node (not supported yet)
-
+    // Priority: Region > Single Node > Single Edge
     let content: React.ReactNode = null;
 
     if (selectedRegionId) {
@@ -105,7 +104,7 @@ export const Inspector: React.FC = () => {
     if (!content) return null;
 
     return (
-        <div className="absolute top-20 right-4 z-40 bg-gray-900/95 border border-gray-700 rounded-lg shadow-2xl p-4 w-64 backdrop-blur-sm animate-in fade-in slide-in-from-right-10 duration-200 pointer-events-auto">
+        <div className="absolute top-20 right-4 z-[100] bg-gray-900/95 border border-gray-700 rounded-lg shadow-2xl p-4 w-64 backdrop-blur-sm pointer-events-auto">
             {content}
         </div>
     );

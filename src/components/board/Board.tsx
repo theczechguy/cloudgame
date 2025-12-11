@@ -22,9 +22,8 @@ export const Board: React.FC = () => {
 
     // Actions
     const addNode = useGameStore((state) => state.addNode);
-    const removeNode = useGameStore((state) => state.removeNode);
+    // removeNode & removeEdge accessed via getState() in handlers
     const addEdge = useGameStore((state) => state.addEdge);
-    const removeEdge = useGameStore((state) => state.removeEdge);
     const updateNodePosition = useGameStore((state) => state.updateNodePosition);
 
     // Local State
@@ -294,8 +293,15 @@ export const Board: React.FC = () => {
             onDragOver={onDragOver}
             onDrop={onDrop}
             onMouseDown={handleBackgroundMouseDown} // Added for rubber banding
-            onClick={() => {
-                // Click handler on background is less useful now with mouseDown handling selection clear
+            onClick={(e) => {
+                // Clear selection on background click (unless panning/dragging check needed?)
+                // Simple check: if we aren't using modifier keys, clear.
+                if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                    setSelectedNodes(new Set());
+                    setSelectedRegion(null);
+                    setSelectedEdge(null);
+                    setConnectSourceId(null);
+                }
             }}
         >
             <TransformWrapper
@@ -397,9 +403,7 @@ export const Board: React.FC = () => {
                 </div>
             )}
 
-            <div className="absolute bottom-4 left-4 z-50 text-gray-400 text-xs font-mono pointer-events-none p-2 bg-black/50 rounded">
-                SHIFT+Click to Connect. SHIFT+Drag to Box Select. CMD/CTRL+Click to Multi-Select. Ctrl+D Duplicate.
-            </div>
+
         </div>
     );
 };
