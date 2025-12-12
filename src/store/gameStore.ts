@@ -25,56 +25,41 @@ interface GameStore extends GameState {
     addCacheHit: (nodeId: string) => void;
 
     duplicateNodes: (ids: string[]) => string[];
+
+    // Game Mode State
+    gameMode: 'sandbox' | 'story' | null;
+    storyStage: number;
+    setGameMode: (mode: 'sandbox' | 'story' | null) => void;
+    setStoryStage: (stage: number) => void;
+    resetToStoryState: () => void;
+
+    // Notifications
+    notifications: Array<{ id: string; message: string; type: 'info' | 'warning' | 'error'; timestamp: number }>;
+    addNotification: (message: string, type?: 'info' | 'warning' | 'error') => void;
+    removeNotification: (id: string) => void;
 }
 
 export const useGameStore = create<GameStore>((set) => ({
     // ... initial state ...
     nodes: {
         'internet-1': { id: 'internet-1', type: 'internet', position: { x: 1300, y: 1300 }, label: 'Internet', queue: [], maxQueueSize: 0, processingSpeed: 0, utilization: 0 },
-        'tm-1': { id: 'tm-1', type: 'traffic-manager', position: { x: 1300, y: 1500 }, label: 'Traffic Mgr', queue: [], maxQueueSize: 20, processingSpeed: 100, utilization: 0 },
-        'fw-1': { id: 'fw-1', type: 'firewall', position: { x: 1300, y: 1700 }, label: 'Firewall', queue: [], maxQueueSize: 20, processingSpeed: 100, utilization: 0 },
-        'lb-1': { id: 'lb-1', type: 'load-balancer', position: { x: 1300, y: 1900 }, label: 'Load Balancer', queue: [], maxQueueSize: 20, processingSpeed: 100, utilization: 0 },
-
-        // Compute Layer
-        'vm-1': { id: 'vm-1', type: 'vm', position: { x: 1000, y: 2200 }, regionId: 'r1', label: 'VM Cluster', queue: [], maxQueueSize: 10, processingSpeed: 10, processingMultiplier: 2, utilization: 0 },
-        'app-1': { id: 'app-1', type: 'app-service', position: { x: 1300, y: 2200 }, regionId: 'r1', label: 'App Service', queue: [], maxQueueSize: 15, processingSpeed: 20, processingMultiplier: 3, utilization: 0 },
-        'func-1': { id: 'func-1', type: 'function-app', position: { x: 1600, y: 2200 }, regionId: 'r1', label: 'Function App', queue: [], maxQueueSize: 5, processingSpeed: 6, processingMultiplier: 1.2, utilization: 0, freeRequestsRemaining: 1000 },
-
+        // Simplified Compute (1x Function) - Direct from Internet
+        'func-1': { id: 'func-1', type: 'function-app', position: { x: 1300, y: 1600 }, regionId: 'r1', label: 'Function App', queue: [], maxQueueSize: 10, processingSpeed: 2, processingMultiplier: 1.2, utilization: 0, freeRequestsRemaining: 1000 },
         // Data Layer
-        'sql-1': { id: 'sql-1', type: 'sql-db', position: { x: 1150, y: 2600 }, regionId: 'r1', label: 'Primary DB', queue: [], maxQueueSize: 100, processingSpeed: 10, processingMultiplier: 1.5, utilization: 0 },
-        'redis-1': { id: 'redis-1', type: 'redis', position: { x: 1300, y: 2500 }, regionId: 'r1', label: 'Redis Cache', queue: [], maxQueueSize: 0, processingSpeed: 100, utilization: 0 },
-        'blob-1': { id: 'blob-1', type: 'blob-storage', position: { x: 1600, y: 2600 }, regionId: 'r1', label: 'Blob Storage', queue: [], maxQueueSize: 50, processingSpeed: 20, utilization: 0 },
-
-        // Monitor
-        'monitor-1': { id: 'monitor-1', type: 'azure-monitor', position: { x: 1800, y: 1400 }, label: 'Azure Monitor', queue: [], maxQueueSize: 0, processingSpeed: 0, utilization: 0 }
+        'sql-1': { id: 'sql-1', type: 'sql-db', position: { x: 1150, y: 1900 }, regionId: 'r1', label: 'Azure SQL', queue: [], maxQueueSize: 100, processingSpeed: 5, processingMultiplier: 1.5, utilization: 0 },
+        'blob-1': { id: 'blob-1', type: 'blob-storage', position: { x: 1450, y: 1900 }, regionId: 'r1', label: 'Blob Storage', queue: [], maxQueueSize: 50, processingSpeed: 20, utilization: 0 },
     },
-    nodeIds: ['internet-1', 'tm-1', 'fw-1', 'lb-1', 'vm-1', 'app-1', 'func-1', 'sql-1', 'redis-1', 'blob-1', 'monitor-1'],
+    nodeIds: ['internet-1', 'func-1', 'sql-1', 'blob-1'],
 
     // Initial Regions
     regions: {
-        'r1': { id: 'r1', label: 'North America', x: 900, y: 2100, width: 900, height: 600, geoId: 'North America' }
+        'r1': { id: 'r1', label: 'North America', x: 900, y: 1500, width: 800, height: 600, geoId: 'North America' }
     },
 
     edges: {
-        'e1': { id: 'e1', source: 'internet-1', target: 'tm-1' },
-        'e2': { id: 'e2', source: 'tm-1', target: 'fw-1' },
-        'e3': { id: 'e3', source: 'fw-1', target: 'lb-1' },
-
-        // Distribution
-        'e4': { id: 'e4', source: 'lb-1', target: 'vm-1' },
-        'e5': { id: 'e5', source: 'lb-1', target: 'app-1' },
-        'e6': { id: 'e6', source: 'lb-1', target: 'func-1' },
-
-        // Backend Connections
-        'e7': { id: 'e7', source: 'vm-1', target: 'sql-1' },
-        'e8': { id: 'e8', source: 'app-1', target: 'redis-1' },
-        'e9': { id: 'e9', source: 'redis-1', target: 'sql-1' }, // Cache Miss Path
-        'e10': { id: 'e10', source: 'func-1', target: 'blob-1' },
-
-        // Missing Connectivity Fixes (prevent random drops)
-        'e11': { id: 'e11', source: 'vm-1', target: 'blob-1' },
-        'e12': { id: 'e12', source: 'app-1', target: 'blob-1' },
-        'e13': { id: 'e13', source: 'func-1', target: 'sql-1' }
+        'e1': { id: 'e1', source: 'internet-1', target: 'func-1' },
+        'e2': { id: 'e2', source: 'func-1', target: 'sql-1' },
+        'e3': { id: 'e3', source: 'func-1', target: 'blob-1' }
     },
     packets: [],
     money: 5000, // Higher starting capital for complex setup
@@ -87,7 +72,9 @@ export const useGameStore = create<GameStore>((set) => ({
     nodeLastCacheHit: {},
     score: 0,
     fps: 60,
-    spawnRate: 300, // Faster spawn rate for testing
+    spawnRate: 999999, // Essentially paused until game starts
+
+
 
 
     sandboxMode: false,
@@ -112,6 +99,45 @@ export const useGameStore = create<GameStore>((set) => ({
     setSelectedRegion: (id) => set({ selectedRegionId: id }),
     setSelectedEdge: (id) => set({ selectedEdgeId: id }),
     setSelectionBox: (box) => set({ selectionBox: box }),
+
+    // Game Mode
+    gameMode: null, // Start at menu
+    storyStage: 0,
+    setGameMode: (mode) => set({ gameMode: mode }),
+    setStoryStage: (stage) => set({ storyStage: stage }),
+    resetToStoryState: () => set({
+        gameMode: 'story',
+        money: 500, // Harder start
+        regions: {}, // No regions
+
+        // Minimal Global Setup
+        nodes: {
+            'internet-1': { id: 'internet-1', type: 'internet', position: { x: 1300, y: 1300 }, label: 'Internet', queue: [], maxQueueSize: 0, processingSpeed: 0, utilization: 0 },
+            'func-1': { id: 'func-1', type: 'function-app', position: { x: 1300, y: 1600 }, label: 'Function App', queue: [], maxQueueSize: 10, processingSpeed: 2, processingMultiplier: 1.2, utilization: 0, freeRequestsRemaining: 1000 },
+            'sql-1': { id: 'sql-1', type: 'sql-db', position: { x: 1150, y: 1900 }, label: 'Azure SQL', queue: [], maxQueueSize: 100, processingSpeed: 5, processingMultiplier: 1.5, utilization: 0 },
+            'blob-1': { id: 'blob-1', type: 'blob-storage', position: { x: 1450, y: 1900 }, label: 'Blob Storage', queue: [], maxQueueSize: 50, processingSpeed: 20, utilization: 0 },
+        },
+        nodeIds: ['internet-1', 'func-1', 'sql-1', 'blob-1'],
+        edges: {
+            'e1': { id: 'e1', source: 'internet-1', target: 'func-1' },
+            'e2': { id: 'e2', source: 'func-1', target: 'sql-1' },
+            'e3': { id: 'e3', source: 'func-1', target: 'blob-1' }
+        },
+        packets: [],
+        storyStage: 0
+    }),
+
+    // Notifications
+    notifications: [],
+    addNotification: (message, type = 'info') => set((state) => ({
+        notifications: [
+            ...state.notifications,
+            { id: Math.random().toString(36).substr(2, 9), message, type, timestamp: Date.now() }
+        ]
+    })),
+    removeNotification: (id) => set((state) => ({
+        notifications: state.notifications.filter(n => n.id !== id)
+    })),
 
     addNode: (node) => set((state) => ({
         nodes: { ...state.nodes, [node.id]: node },

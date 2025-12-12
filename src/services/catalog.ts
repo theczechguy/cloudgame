@@ -28,12 +28,12 @@ export const SERVICE_CATALOG: ServiceDefinition[] = [
         description: 'Basic compute unit. Fixed capacity.',
         icon: '💻',
         baseStats: {
-            processingSpeed: 10,
+            processingSpeed: 8,
             maxQueueSize: 5, // Jitter buffer
             maxConcurrent: 2
         }
         ,
-        processingMultiplier: 2
+        processingMultiplier: 1.5
     },
     {
         type: 'app-service',
@@ -43,12 +43,12 @@ export const SERVICE_CATALOG: ServiceDefinition[] = [
         description: 'Scalable web hosting. Handles more traffic.',
         icon: '📱',
         baseStats: {
-            processingSpeed: 20,
+            processingSpeed: 25,
             maxQueueSize: 10, // Scalable buffer
             maxConcurrent: 5
         }
         ,
-        processingMultiplier: 3
+        processingMultiplier: 2
     },
     {
         type: 'function-app',
@@ -59,7 +59,7 @@ export const SERVICE_CATALOG: ServiceDefinition[] = [
         icon: '⚡'
         ,
         baseStats: {
-            processingSpeed: 6,
+            processingSpeed: 2, // Nerfed from 6 to 3 to 2
             maxQueueSize: 5, // Event buffer
             maxConcurrent: 2
         },
@@ -69,18 +69,45 @@ export const SERVICE_CATALOG: ServiceDefinition[] = [
     },
     {
         type: 'sql-db',
-        label: 'SQL Database',
+        label: 'Azure SQL (Basic)',
         cost: 300,
         upkeep: 15,
-        description: 'Data persistence. Required for some requests.',
+        description: 'Standard relational database. Good for basic workloads.',
         icon: '🗄️',
         baseStats: {
             processingSpeed: 5,
-            maxQueueSize: 10, // Connection pool
+            maxQueueSize: 10,
             maxConcurrent: 2
-        }
-        ,
+        },
         processingMultiplier: 1.5
+    },
+    {
+        type: 'sql-db-premium',
+        label: 'Azure SQL (Premium)',
+        cost: 600,
+        upkeep: 40,
+        description: 'High-perf database. 2x speed & concurrency.',
+        icon: '🚀',
+        baseStats: {
+            processingSpeed: 10, // 2x Basic
+            maxQueueSize: 20,    // 2x Basic
+            maxConcurrent: 4     // 2x Basic
+        },
+        processingMultiplier: 1.5
+    },
+    {
+        type: 'cosmos-db',
+        label: 'Azure Cosmos DB',
+        cost: 1200,
+        upkeep: 100,
+        description: 'Global NoSQL database. Zero latency across regions.',
+        icon: '🪐',
+        baseStats: {
+            processingSpeed: 20, // 2x Premium (10 -> 20)
+            maxQueueSize: 50,    // > 2x Premium (20 -> 50)
+            maxConcurrent: 10    // > 2x Premium (4 -> 10)
+        },
+        processingMultiplier: 1.5 // Match SQL multiplier for consistent math
     },
     {
         type: 'traffic-manager',

@@ -1,4 +1,4 @@
-export type NodeType = 'internet' | 'vm' | 'app-service' | 'function-app' | 'sql-db' | 'traffic-manager' | 'load-balancer' | 'storage-queue' | 'firewall' | 'waf' | 'redis' | 'blob-storage' | 'azure-monitor';
+export type NodeType = 'internet' | 'vm' | 'app-service' | 'function-app' | 'sql-db' | 'sql-db-premium' | 'cosmos-db' | 'traffic-manager' | 'load-balancer' | 'storage-queue' | 'firewall' | 'waf' | 'redis' | 'blob-storage' | 'azure-monitor';
 
 
 export type PacketType = 'http-compute' | 'http-db' | 'http-storage' | 'http-attack' | 'db-query' | 'db-result' | 'http-response' | 'storage-op' | 'storage-result' | 'log-entry';

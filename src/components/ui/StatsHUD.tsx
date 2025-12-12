@@ -78,6 +78,9 @@ export const StatsHUD: React.FC = () => {
             <div className="text-sm opacity-80">Packets: {packets.length}</div>
             <div className="text-sm opacity-80">Nodes: {nodeIds.length}</div>
             <div className="text-sm opacity-80">Drops: <span className="text-red-400">{recentDrops}/s</span> total <span className="font-mono">{totalDrops}</span></div>
+            <div className="text-sm opacity-80 mt-2">
+                Traffic: <span className="text-blue-300 font-bold">{(1000 / Math.max(1, useGameStore.getState().spawnRate)).toFixed(1)} req/s</span>
+            </div>
             <div className="mt-2 text-sm border-t border-white/10 pt-2">
                 <div className="font-semibold mb-1">Upkeep: ${costBreakdown.total.toFixed(2)}/s</div>
                 <div className="space-y-1">

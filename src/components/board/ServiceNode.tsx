@@ -17,6 +17,8 @@ const ICONS: Record<string, string> = {
     'redis': '🚀',
     'blob-storage': '🗃️',
     'azure-monitor': '📊',
+    'sql-db-premium': '🚀',
+    'cosmos-db': '🪐',
 };
 
 interface ServiceNodeProps {

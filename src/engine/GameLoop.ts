@@ -315,7 +315,7 @@ export const useGameLoop = () => {
                             return false;
                         }
 
-                        if (nextType === 'db-query') return ['sql-db', 'storage-queue', 'redis'].includes(target.type);
+                        if (nextType === 'db-query') return ['sql-db', 'sql-db-premium', 'cosmos-db', 'storage-queue', 'redis'].includes(target.type);
                         if (nextType === 'storage-op') return ['blob-storage', 'storage-queue'].includes(target.type);
 
                         if (nextType === 'db-result' || nextType === 'storage-result') return ['vm', 'app-service', 'function-app', 'firewall', 'waf', 'storage-queue', 'redis'].includes(target.type);
@@ -471,12 +471,16 @@ export const useGameLoop = () => {
 
                     // LATENCY PENALTY (Cross-Region Compute)
                     // If processing a request from a specific region, but this node is in a DIFFERENT Geo Region (or none)
-                    const isCompute = ['vm', 'app-service', 'function-app'].includes(node.type);
-                    if (isCompute && packet.originRegion && node.regionId) {
+                    // Also applies to Databases (unless Cosmos)
+                    const isComputeOrDB = ['vm', 'app-service', 'function-app', 'sql-db', 'sql-db-premium', 'cosmos-db'].includes(node.type);
+                    if (isComputeOrDB && packet.originRegion && node.regionId) {
                         const region = regions[node.regionId];
                         if (!region || !region.geoId || region.geoId !== packet.originRegion) {
                             // Penalty: 50% Slower
-                            execMs = Math.round(execMs * 1.5);
+                            // EXCEPTION: Cosmos DB is Globally Distributed (No Penalty)
+                            if (node.type !== 'cosmos-db') {
+                                execMs = Math.round(execMs * 1.5);
+                            }
                         }
                     }
 

@@ -41,40 +41,55 @@ export const ServicePalette: React.FC = () => {
             </div>
 
             {/* Dock Container */}
-            <div className="bg-gray-900/80 border border-gray-700 rounded-2xl shadow-2xl p-2 flex gap-2 backdrop-blur-md transition-all hover:bg-gray-900/90">
+            <div className="bg-gray-900/80 border border-gray-700 rounded-2xl shadow-2xl p-2 flex items-center gap-2 backdrop-blur-md transition-all hover:bg-gray-900/90">
                 {sandboxMode && (
                     <div className="absolute -top-3 right-4 bg-yellow-600 text-white text-[10px] px-2 rounded-full font-bold shadow-sm">
                         SANDBOX
                     </div>
                 )}
 
-                {SERVICE_CATALOG.map((service) => {
-                    const canAfford = sandboxMode || money >= service.cost;
-                    return (
-                        <div
-                            key={service.type}
-                            draggable={canAfford}
-                            onDragStart={(e) => handleDragStart(e, service.type, canAfford)}
-                            onMouseEnter={() => setHoveredService(service.type)}
-                            onMouseLeave={() => setHoveredService(null)}
-                            className={`
-                                group relative w-16 h-16 rounded-xl flex flex-col items-center justify-center
-                                transition-all duration-200 border border-transparent
-                                ${canAfford
-                                    ? 'hover:bg-gray-700/80 hover:scale-110 hover:-translate-y-1 hover:shadow-lg hover:border-gray-500 cursor-grab active:cursor-grabbing bg-gray-800/40'
-                                    : 'bg-gray-800/20 opacity-40 cursor-not-allowed grayscale'
-                                }
-                            `}
-                        >
-                            <span className="text-2xl mb-1 filter drop-shadow-md group-hover:drop-shadow-lg transition-transform">
-                                {service.icon}
-                            </span>
-                            <span className={`text-[10px] font-mono font-bold ${canAfford ? 'text-green-400' : 'text-red-400'}`}>
-                                ${service.cost}
-                            </span>
-                        </div>
-                    );
-                })}
+                {[
+                    { id: 'compute', types: ['function-app', 'vm', 'app-service'] },
+                    { id: 'data', types: ['sql-db', 'sql-db-premium', 'cosmos-db', 'blob-storage', 'redis', 'storage-queue'] },
+                    { id: 'network', types: ['firewall', 'load-balancer', 'traffic-manager', 'azure-monitor'] }
+                ].map((group, groupIndex, groups) => (
+                    <React.Fragment key={group.id}>
+                        {group.types.map(type => {
+                            const service = SERVICE_CATALOG.find(s => s.type === type);
+                            if (!service) return null;
+
+                            const canAfford = sandboxMode || money >= service.cost;
+                            return (
+                                <div
+                                    key={service.type}
+                                    draggable={canAfford}
+                                    onDragStart={(e) => handleDragStart(e, service.type, canAfford)}
+                                    onMouseEnter={() => setHoveredService(service.type)}
+                                    onMouseLeave={() => setHoveredService(null)}
+                                    className={`
+                                        group relative w-16 h-16 rounded-xl flex flex-col items-center justify-center
+                                        transition-all duration-200 border border-transparent
+                                        ${canAfford
+                                            ? 'hover:bg-gray-700/80 hover:scale-110 hover:-translate-y-1 hover:shadow-lg hover:border-gray-500 cursor-grab active:cursor-grabbing bg-gray-800/40'
+                                            : 'bg-gray-800/20 opacity-40 cursor-not-allowed grayscale'
+                                        }
+                                    `}
+                                >
+                                    <span className="text-2xl mb-1 filter drop-shadow-md group-hover:drop-shadow-lg transition-transform">
+                                        {service.icon}
+                                    </span>
+                                    <span className={`text-[10px] font-mono font-bold ${canAfford ? 'text-green-400' : 'text-red-400'}`}>
+                                        ${service.cost}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                        {/* Separator */}
+                        {groupIndex < groups.length - 1 && (
+                            <div className="w-px h-10 bg-gray-700 mx-1" />
+                        )}
+                    </React.Fragment>
+                ))}
             </div>
         </div>
     );
