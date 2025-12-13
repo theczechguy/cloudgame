@@ -51,7 +51,7 @@ export const ServicePalette: React.FC = () => {
                 {[
                     { id: 'compute', types: ['function-app', 'vm', 'app-service'] },
                     { id: 'data', types: ['sql-db', 'sql-db-premium', 'cosmos-db', 'blob-storage', 'redis', 'storage-queue'] },
-                    { id: 'network', types: ['firewall', 'load-balancer', 'traffic-manager', 'azure-monitor'] }
+                    { id: 'network', types: ['firewall', 'waf', 'load-balancer', 'traffic-manager', 'azure-monitor'] }
                 ].map((group, groupIndex, groups) => (
                     <React.Fragment key={group.id}>
                         {group.types.map(type => {

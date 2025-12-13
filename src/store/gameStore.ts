@@ -32,6 +32,16 @@ interface GameStore extends GameState {
     setGameMode: (mode: 'sandbox' | 'story' | null) => void;
     setStoryStage: (stage: number) => void;
     resetToStoryState: () => void;
+    setWaveConfig: (types: string[] | null, rate: number) => void;
+
+    showStoryIntro: boolean;
+    setShowStoryIntro: (show: boolean) => void;
+
+    isPaused: boolean;
+    togglePause: () => void;
+
+    // Simulation Config
+    activePacketTypes: string[] | null;
 
     // Notifications
     notifications: Array<{ id: string; message: string; type: 'info' | 'warning' | 'error'; timestamp: number }>;
@@ -43,23 +53,46 @@ export const useGameStore = create<GameStore>((set) => ({
     // ... initial state ...
     nodes: {
         'internet-1': { id: 'internet-1', type: 'internet', position: { x: 1300, y: 1300 }, label: 'Internet', queue: [], maxQueueSize: 0, processingSpeed: 0, utilization: 0 },
-        // Simplified Compute (1x Function) - Direct from Internet
-        'func-1': { id: 'func-1', type: 'function-app', position: { x: 1300, y: 1600 }, regionId: 'r1', label: 'Function App', queue: [], maxQueueSize: 10, processingSpeed: 2, processingMultiplier: 1.2, utilization: 0, freeRequestsRemaining: 1000 },
+        // Security Layer
+        'waf-1': { id: 'waf-1', type: 'waf', position: { x: 1300, y: 1450 }, regionId: 'r1', label: 'WAF', queue: [], maxQueueSize: 10, utilization: 0 },
+        // Routing
+        'lb-1': { id: 'lb-1', type: 'load-balancer', position: { x: 1300, y: 1600 }, regionId: 'r1', label: 'Load Balancer', queue: [], maxQueueSize: 20, utilization: 0 },
+
+        // Compute Cluster (2 Funcs + 1 VM)
+        'func-1': { id: 'func-1', type: 'function-app', position: { x: 1100, y: 1800 }, regionId: 'r1', label: 'Func A', queue: [], maxQueueSize: 10, processingSpeed: 2, processingMultiplier: 1.2, utilization: 0, freeRequestsRemaining: 100 },
+        'func-2': { id: 'func-2', type: 'function-app', position: { x: 1300, y: 1800 }, regionId: 'r1', label: 'Func B', queue: [], maxQueueSize: 10, processingSpeed: 2, processingMultiplier: 1.2, utilization: 0, freeRequestsRemaining: 100 },
+        'vm-1': { id: 'vm-1', type: 'vm', position: { x: 1500, y: 1800 }, regionId: 'r1', label: 'VM C', queue: [], maxQueueSize: 50, processingSpeed: 8, processingMultiplier: 1.5, utilization: 0 },
+
         // Data Layer
-        'sql-1': { id: 'sql-1', type: 'sql-db', position: { x: 1150, y: 1900 }, regionId: 'r1', label: 'Azure SQL', queue: [], maxQueueSize: 100, processingSpeed: 5, processingMultiplier: 1.5, utilization: 0 },
-        'blob-1': { id: 'blob-1', type: 'blob-storage', position: { x: 1450, y: 1900 }, regionId: 'r1', label: 'Blob Storage', queue: [], maxQueueSize: 50, processingSpeed: 20, utilization: 0 },
+        'sql-1': { id: 'sql-1', type: 'sql-db', position: { x: 1200, y: 2100 }, regionId: 'r1', label: 'Azure SQL', queue: [], maxQueueSize: 100, processingSpeed: 5, processingMultiplier: 1.5, utilization: 0 },
+        'blob-1': { id: 'blob-1', type: 'blob-storage', position: { x: 1400, y: 2100 }, regionId: 'r1', label: 'Blob Storage', queue: [], maxQueueSize: 50, processingSpeed: 20, utilization: 0 },
     },
-    nodeIds: ['internet-1', 'func-1', 'sql-1', 'blob-1'],
+    nodeIds: ['internet-1', 'waf-1', 'lb-1', 'func-1', 'func-2', 'vm-1', 'sql-1', 'blob-1'],
 
     // Initial Regions
     regions: {
-        'r1': { id: 'r1', label: 'North America', x: 900, y: 1500, width: 800, height: 600, geoId: 'North America' }
+        'r1': { id: 'r1', label: 'North America', x: 900, y: 1400, width: 800, height: 900, geoId: 'North America' }
     },
 
     edges: {
-        'e1': { id: 'e1', source: 'internet-1', target: 'func-1' },
-        'e2': { id: 'e2', source: 'func-1', target: 'sql-1' },
-        'e3': { id: 'e3', source: 'func-1', target: 'blob-1' }
+        // Internet -> WAF -> LB
+        'e1': { id: 'e1', source: 'internet-1', target: 'waf-1' },
+        'e2': { id: 'e2', source: 'waf-1', target: 'lb-1' },
+
+        // LB -> Compute
+        'e3': { id: 'e3', source: 'lb-1', target: 'func-1' },
+        'e4': { id: 'e4', source: 'lb-1', target: 'func-2' },
+        'e5': { id: 'e5', source: 'lb-1', target: 'vm-1' },
+
+        // Compute -> Data
+        'e6': { id: 'e6', source: 'func-1', target: 'sql-1' },
+        'e7': { id: 'e7', source: 'func-1', target: 'blob-1' },
+
+        'e8': { id: 'e8', source: 'func-2', target: 'sql-1' },
+        'e9': { id: 'e9', source: 'func-2', target: 'blob-1' },
+
+        'e10': { id: 'e10', source: 'vm-1', target: 'sql-1' },
+        'e11': { id: 'e11', source: 'vm-1', target: 'blob-1' },
     },
     packets: [],
     money: 5000, // Higher starting capital for complex setup
@@ -73,6 +106,7 @@ export const useGameStore = create<GameStore>((set) => ({
     score: 0,
     fps: 60,
     spawnRate: 999999, // Essentially paused until game starts
+    activePacketTypes: null, // Default to all
 
 
 
@@ -113,19 +147,23 @@ export const useGameStore = create<GameStore>((set) => ({
         // Minimal Global Setup
         nodes: {
             'internet-1': { id: 'internet-1', type: 'internet', position: { x: 1300, y: 1300 }, label: 'Internet', queue: [], maxQueueSize: 0, processingSpeed: 0, utilization: 0 },
-            'func-1': { id: 'func-1', type: 'function-app', position: { x: 1300, y: 1600 }, label: 'Function App', queue: [], maxQueueSize: 10, processingSpeed: 2, processingMultiplier: 1.2, utilization: 0, freeRequestsRemaining: 1000 },
-            'sql-1': { id: 'sql-1', type: 'sql-db', position: { x: 1150, y: 1900 }, label: 'Azure SQL', queue: [], maxQueueSize: 100, processingSpeed: 5, processingMultiplier: 1.5, utilization: 0 },
-            'blob-1': { id: 'blob-1', type: 'blob-storage', position: { x: 1450, y: 1900 }, label: 'Blob Storage', queue: [], maxQueueSize: 50, processingSpeed: 20, utilization: 0 },
+            'func-1': { id: 'func-1', type: 'function-app', position: { x: 1300, y: 1600 }, label: 'Function App', queue: [], maxQueueSize: 10, processingSpeed: 2, processingMultiplier: 1.2, utilization: 0, freeRequestsRemaining: 100 },
         },
-        nodeIds: ['internet-1', 'func-1', 'sql-1', 'blob-1'],
+        nodeIds: ['internet-1', 'func-1'],
         edges: {
             'e1': { id: 'e1', source: 'internet-1', target: 'func-1' },
-            'e2': { id: 'e2', source: 'func-1', target: 'sql-1' },
-            'e3': { id: 'e3', source: 'func-1', target: 'blob-1' }
         },
         packets: [],
-        storyStage: 0
+        storyStage: 0,
+        activePacketTypes: ['http-compute'], // Start with simple compute only (Wave 1)
+        showStoryIntro: true
     }),
+
+    showStoryIntro: false,
+    setShowStoryIntro: (show) => set({ showStoryIntro: show }),
+
+    isPaused: false,
+    togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
 
     // Notifications
     notifications: [],
@@ -148,6 +186,7 @@ export const useGameStore = create<GameStore>((set) => ({
     })),
     toggleSandboxMode: () => set((state) => ({ sandboxMode: !state.sandboxMode })),
     setSpawnRate: (rate) => set({ spawnRate: rate }),
+    setWaveConfig: (types, rate) => set({ activePacketTypes: types, spawnRate: rate }), // NEW
     updateNodePosition: (id, position) => set((state) => {
         // If the node being moved is part of a selection, we must move ALL selected nodes by the delta
         // BUT `updateNodePosition` is usually called with absolute position for the dragged node.
@@ -201,7 +240,45 @@ export const useGameStore = create<GameStore>((set) => ({
             edges: remainingEdges
         };
     }),
-    addEdge: (edge) => set((state) => ({ edges: { ...state.edges, [edge.id]: edge } })),
+    addEdge: (edge) => set((state) => {
+        const sourceNode = state.nodes[edge.source];
+        const targetNode = state.nodes[edge.target];
+
+        // 1. Prevent Incoming Connections to Internet
+        if (targetNode?.type === 'internet') {
+            return {
+                notifications: [
+                    ...state.notifications,
+                    {
+                        id: Math.random().toString(36).substr(2, 9),
+                        message: "Cannot connect TO the Internet node. It is a Source.",
+                        type: 'warning',
+                        timestamp: Date.now()
+                    }
+                ]
+            };
+        }
+
+        // 2. Validation: Internet Node Limit (Outgoing)
+        if (sourceNode?.type === 'internet') {
+            const existingEdges = Object.values(state.edges).filter(e => e.source === edge.source);
+            if (existingEdges.length >= 1) { // Allows 1 edge. If 1 exists, block 2nd.
+                return {
+                    notifications: [
+                        ...state.notifications,
+                        {
+                            id: Math.random().toString(36).substr(2, 9),
+                            message: "Internet Link Saturated! Use a Load Balancer to connect more nodes.",
+                            type: 'warning',
+                            timestamp: Date.now()
+                        }
+                    ]
+                };
+            }
+        }
+
+        return { edges: { ...state.edges, [edge.id]: edge } };
+    }),
     removeEdge: (id) => set((state) => {
         const { [id]: _, ...remainingEdges } = state.edges;
         return { edges: remainingEdges };

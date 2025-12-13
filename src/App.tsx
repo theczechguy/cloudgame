@@ -8,6 +8,7 @@ import { Inspector } from './components/ui/Inspector';
 import { StartScreen } from './components/ui/StartScreen';
 import { MessageCenter } from './components/ui/MessageCenter';
 import { StoryManager } from './engine/StoryManager';
+import { MissionBriefing } from './components/ui/MissionBriefing';
 import { useGameStore } from './store/gameStore';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
   return (
     <div className="h-screen w-screen bg-black text-white relative">
       <StoryManager />
+      <MissionBriefing />
       <MessageCenter />
       <Alerts />
 

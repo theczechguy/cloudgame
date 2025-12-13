@@ -64,7 +64,7 @@ export const SERVICE_CATALOG: ServiceDefinition[] = [
             maxConcurrent: 2
         },
         processingMultiplier: 1.2,
-        freeRequests: 1000,
+        freeRequests: 100, // Reduced from 1000
         perRequestCost: 0.005
     },
     {

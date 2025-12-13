@@ -1,38 +1,123 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { STORY_WAVES } from '../config/storyWaves';
 
 export const StoryManager = () => {
     const gameMode = useGameStore((state) => state.gameMode);
-    const spawnRate = useGameStore((state) => state.spawnRate);
-    const setSpawnRate = useGameStore((state) => state.setSpawnRate);
+    const setWaveConfig = useGameStore((state) => state.setWaveConfig);
     const addNotification = useGameStore((state) => state.addNotification);
+    const isPaused = useGameStore((state) => state.isPaused);
+    const togglePause = useGameStore((state) => state.togglePause);
 
-    // Store spawn rate in ref to avoid effect re-running on every change
-    // but we actually WANT the effect to set up the interval.
-    // However, for a simple difficulty loop, we can use a ref to track "next update time".
+    // Wave State
+    const [currentWaveIndex, setCurrentWaveIndex] = useState(0);
+    const [progress, setProgress] = useState(0);
+    const [waveTimeLeft, setWaveTimeLeft] = useState(30);
+
+    const startTimeRef = useRef(Date.now());
+    const waveInitializedRef = useRef(false);
 
     useEffect(() => {
-        if (gameMode !== 'story') return;
+        if (gameMode !== 'story') {
+            setProgress(0);
+            setCurrentWaveIndex(0);
+            waveInitializedRef.current = false;
+            return;
+        }
+
+        // Initialize First Wave
+        if (!waveInitializedRef.current) {
+            const firstWave = STORY_WAVES[0];
+            setWaveConfig(firstWave.types, firstWave.rate);
+            startTimeRef.current = Date.now();
+            waveInitializedRef.current = true;
+            // addNotification(firstWave.message, 'info'); // Maybe too noisy on immediate start
+        }
 
         const interval = setInterval(() => {
-            // Logic: Increase spawn rate (decrease ms) every 30 seconds
-            // Base: 500ms (2 req/s)
-            // Goal: +0.5 req/s every 30s. 
-            // 2.0 -> 2.5 (400ms) -> 3.0 (333ms) -> 3.5 (285ms) etc.
+            const showIntro = useGameStore.getState().showStoryIntro;
+            const isPaused = useGameStore.getState().isPaused; // Check pause state
 
-            const currentReqsPerSec = 1000 / Math.max(spawnRate, 1); // Avoid div/0
-            const nextReqsPerSec = currentReqsPerSec + 0.5;
-            const nextSpawnRate = 1000 / nextReqsPerSec;
+            if (showIntro || isPaused) {
+                // Reset timer start so we don't count the time spent in modal or paused state
+                // This "slides" the start time forward as long as we are paused
+                startTimeRef.current = Date.now() - (progress / 100 * (STORY_WAVES[currentWaveIndex]?.duration || 1) * 1000);
+                return; // Pause
+            }
 
-            if (nextSpawnRate < 10) return; // Cap at 100 req/s to prevent crash
+            const currentWave = STORY_WAVES[currentWaveIndex];
+            if (!currentWave) return;
 
-            setSpawnRate(nextSpawnRate);
-            addNotification(`Traffic increasing! Now at ${nextReqsPerSec.toFixed(1)} req/s`, 'warning');
+            const durationMs = currentWave.duration * 1000;
+            const now = Date.now();
+            const elapsed = now - startTimeRef.current;
 
-        }, 30000); // 30 seconds
+            // Update UI
+            setWaveTimeLeft(Math.max(0, Math.ceil((durationMs - elapsed) / 1000)));
+            setProgress(Math.min(100, (elapsed / durationMs) * 100));
+
+            // Wave Complete?
+            if (elapsed >= durationMs) {
+                // Determine Next Wave
+                const nextIndex = currentWaveIndex + 1;
+
+                if (nextIndex < STORY_WAVES.length) {
+                    // Advance to Next Defined Wave
+                    const nextWave = STORY_WAVES[nextIndex];
+                    setCurrentWaveIndex(nextIndex);
+                    setWaveConfig(nextWave.types, nextWave.rate);
+                    addNotification(nextWave.message, 'info');
+
+                    // Reset Timer
+                    startTimeRef.current = Date.now();
+                    setProgress(0);
+                } else {
+                    // End of Scripted Waves -> Infinite Scaling (Stress Test)
+                    // We just keep the last wave active but could implement a scaler here.
+                    // For now, let's just loop the last wave or hold.
+                }
+            }
+        }, 200);
 
         return () => clearInterval(interval);
-    }, [gameMode, spawnRate, setSpawnRate, addNotification]);
+    }, [gameMode, currentWaveIndex, setWaveConfig, addNotification, progress]); // Added progress dep to ensure pause math works? Actually useRef/getState avoids deps usually, but progress state is used in math.
 
-    return null; // Logic only
+    if (gameMode !== 'story') return null;
+
+    const currentWave = STORY_WAVES[currentWaveIndex];
+
+    return (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 w-96 z-[160] flex flex-col items-center gap-1">
+            {/* Wave Info & Pause Control */}
+            <div className="flex items-center gap-4">
+                <div className="text-[10px] uppercase font-bold text-blue-200 tracking-widest shadow-black drop-shadow-md pointer-events-none">
+                    Wave {currentWaveIndex + 1}: {currentWave?.name || 'Unknown'}
+                </div>
+
+                {/* Pause Button (Pointer Events Enabled) */}
+                <button
+                    onClick={() => togglePause()}
+                    className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border transition-colors ${isPaused
+                        ? 'bg-yellow-500/20 border-yellow-500 text-yellow-300 hover:bg-yellow-500/40'
+                        : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:text-white hover:border-gray-400'
+                        }`}
+                >
+                    {isPaused ? 'RESUME' : 'PAUSE'}
+                </button>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="bg-gray-900/80 backdrop-blur rounded-full h-6 w-full border border-gray-600 flex items-center relative overflow-hidden px-3 shadow-xl pointer-events-none">
+                <div
+                    className={`absolute left-0 top-0 bottom-0 transition-all duration-200 ease-linear ${isPaused ? 'bg-yellow-500/20' : 'bg-gradient-to-r from-blue-900/60 to-cyan-500/50'
+                        }`}
+                    style={{ width: `${progress}%` }}
+                />
+                <div className="relative z-10 flex justify-between w-full text-[10px] font-mono text-cyan-100 uppercase font-bold">
+                    <span>{isPaused ? 'PAUSED' : 'Next Phase'}</span>
+                    <span>{waveTimeLeft}s</span>
+                </div>
+            </div>
+        </div>
+    );
 };

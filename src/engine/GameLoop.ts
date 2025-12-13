@@ -29,7 +29,13 @@ export const useGameLoop = () => {
             const fps = Math.round(1 / deltaTime);
             if (time % 10 < deltaTime) useGameStore.getState().setFps(fps);
 
-            const { nodes, edges, packets, regions } = useGameStore.getState();
+            const { nodes, edges, packets, regions, isPaused } = useGameStore.getState();
+
+            if (isPaused) {
+                previousTimeRef.current = time;
+                requestRef.current = requestAnimationFrame(animate);
+                return;
+            }
 
             const penalizeIfNeeded = (packetId: string, packetType: PacketType, nodeId?: string, pos?: { x: number, y: number }) => {
                 // Only penalize customer-facing flows (exclude attacks)
@@ -181,6 +187,14 @@ export const useGameLoop = () => {
                             } else {
                                 // Drop packet (Queue Full) — penalize customer request if applicable
                                 penalizeIfNeeded(p.id, p.type, targetId, targetNode?.position);
+
+                                // Record Drop Stat
+                                if (!nodeUpdates[targetId]) nodeUpdates[targetId] = { ...targetNode, queue: [...targetNode.queue], activeTasks: targetNode.activeTasks ? [...targetNode.activeTasks] : [] };
+                                const drops = nodeUpdates[targetId].droppedPackets || {};
+                                nodeUpdates[targetId].droppedPackets = {
+                                    ...drops,
+                                    [p.type]: (drops[p.type] || 0) + 1
+                                };
                             }
                         }
                     }
@@ -257,16 +271,31 @@ export const useGameLoop = () => {
                     if (isCompute && (packet.type === 'http-compute' || packet.type === 'http-db' || packet.type === 'http-storage')) {
                         // Smart Routing Validation Logic
                         const connectedTypes = outgoing.map(e => nodes[e.target]?.type);
-                        const canDoDB = connectedTypes.includes('sql-db') || connectedTypes.includes('redis');
-                        const canDoBlob = connectedTypes.includes('blob-storage');
+                        // FIX: Allow LB/TM as gateways to downstream resources
+                        const isGateway = connectedTypes.includes('load-balancer') || connectedTypes.includes('traffic-manager');
+
+                        const canDoDB = isGateway || connectedTypes.includes('sql-db') || connectedTypes.includes('redis');
+                        const canDoBlob = isGateway || connectedTypes.includes('blob-storage');
 
                         // FAIL HARD if resources missing for specific intent
                         if (packet.type === 'http-db' && !canDoDB) {
                             penalizeIfNeeded(packet.id, packet.type, nodeId, node.position);
+
+                            // Record Drop Stat (Missing Resource)
+                            if (!nodeUpdates[nodeId]) nodeUpdates[nodeId] = { ...node, queue: [...node.queue], activeTasks: node.activeTasks ? [...node.activeTasks] : [] };
+                            const drops = nodeUpdates[nodeId].droppedPackets || {};
+                            nodeUpdates[nodeId].droppedPackets = { ...drops, [packet.type]: (drops[packet.type] || 0) + 1 };
+
                             return; // Drop
                         }
                         if (packet.type === 'http-storage' && !canDoBlob) {
                             penalizeIfNeeded(packet.id, packet.type, nodeId, node.position);
+
+                            // Record Drop Stat (Missing Resource)
+                            if (!nodeUpdates[nodeId]) nodeUpdates[nodeId] = { ...node, queue: [...node.queue], activeTasks: node.activeTasks ? [...node.activeTasks] : [] };
+                            const drops = nodeUpdates[nodeId].droppedPackets || {};
+                            nodeUpdates[nodeId].droppedPackets = { ...drops, [packet.type]: (drops[packet.type] || 0) + 1 };
+
                             return; // Drop
                         }
 
@@ -315,13 +344,13 @@ export const useGameLoop = () => {
                             return false;
                         }
 
-                        if (nextType === 'db-query') return ['sql-db', 'sql-db-premium', 'cosmos-db', 'storage-queue', 'redis'].includes(target.type);
-                        if (nextType === 'storage-op') return ['blob-storage', 'storage-queue'].includes(target.type);
+                        if (nextType === 'db-query') return ['sql-db', 'sql-db-premium', 'cosmos-db', 'storage-queue', 'redis', 'load-balancer', 'traffic-manager'].includes(target.type);
+                        if (nextType === 'storage-op') return ['blob-storage', 'storage-queue', 'load-balancer', 'traffic-manager'].includes(target.type);
 
-                        if (nextType === 'db-result' || nextType === 'storage-result') return ['vm', 'app-service', 'function-app', 'firewall', 'waf', 'storage-queue', 'redis'].includes(target.type);
+                        if (nextType === 'db-result' || nextType === 'storage-result') return ['vm', 'app-service', 'function-app', 'firewall', 'waf', 'storage-queue', 'load-balancer', 'traffic-manager'].includes(target.type);
 
                         if (nextType === 'http-response') return ['internet', 'traffic-manager', 'load-balancer', 'firewall', 'waf', 'storage-queue'].includes(target.type);
-                        if (['http-compute', 'http-db', 'http-storage'].includes(nextType)) return ['vm', 'app-service', 'function-app', 'load-balancer', 'firewall', 'waf', 'storage-queue'].includes(target.type);
+                        if (['http-compute', 'http-db', 'http-storage'].includes(nextType)) return ['vm', 'app-service', 'function-app', 'load-balancer', 'firewall', 'waf', 'storage-queue', 'traffic-manager'].includes(target.type);
 
                         return true;
                     });
@@ -343,24 +372,78 @@ export const useGameLoop = () => {
                             }
                         }
 
+
                         // Local / Default Routing (Load Balancer or Fallback for TM)
                         // If multiple targets exist, prefer those in the SAME region as the current node (Performance Mode)
                         if (!targetEdge && ['traffic-manager', 'load-balancer'].includes(node.type) && validTargets.length > 1) {
-                            const localTargets = validTargets.filter(e => {
-                                const t = getNode(e.target);
-                                // Treat 'undefined' region as global - if both undefined, it's local.
-                                // If one is defined and other isn't, it's remote.
-                                return t && t.regionId === node.regionId;
-                            });
 
-                            if (localTargets.length > 0) {
-                                // Found local targets - route to one of them to minimize latency
-                                targetEdge = localTargets[Math.floor(Math.random() * localTargets.length)];
+                            // UPGRADE CHECK: Smart Routing (Weighted Availability)
+                            if (node.upgrades?.includes('smart-routing')) {
+                                // Calculate weights based on available capacity (Max Queue - Current Queue)
+                                const candidates = validTargets.map(edge => {
+                                    const t = getNode(edge.target);
+                                    if (!t) return { edge, weight: 0 }; // Should not happen with validTargets
+                                    // CRITICAL FIX: Check nodeUpdates for pending queue additions in this frame
+                                    const pendingUpdate = nodeUpdates[t.id];
+                                    const currentQueueLen = pendingUpdate ? pendingUpdate.queue.length : t.queue.length;
+                                    const utilization = t.utilization || 0; // 0.0 to 1.0
+
+                                    // Weight = Free Slots * (One minus Utilization).
+                                    // (1.1 - util) ensures even 100% utilized nodes have a tiny non-zero weight (0.1) to avoid absolute starvation if queue exists.
+                                    const freeSlots = Math.max(0, t.maxQueueSize - currentQueueLen);
+                                    const cpuFactor = Math.max(0.1, 1.1 - utilization);
+
+                                    // QUEUE PENALTY: If >10% full, penalize weight significantly
+                                    const queueRatio = t.maxQueueSize > 0 ? currentQueueLen / t.maxQueueSize : 0;
+                                    const queuePenalty = queueRatio >= 0.1 ? 0.5 : 1.0;
+
+                                    // DAMPENING: Use Sqrt of free slots so huge nodes don't dominate completely (50 slots vs 5 slots -> 7 vs 2.2, not 10 vs 1)
+                                    // OFFSET: +2.0 ensures even small nodes get a baseline "Participation Weight" so traffic is distributed more evenly.
+                                    // SPEED: Multiply by processing speed. A VM (Speed 8) can handle 4x the load of a Func (Speed 2), so it should attract 4x the traffic.
+                                    const speed = t.processingSpeed || 1;
+                                    const weight = (speed * Math.sqrt(freeSlots) * cpuFactor * queuePenalty) + 2.0;
+                                    return { edge, weight };
+                                });
+
+                                const totalWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
+
+                                if (totalWeight > 0) {
+                                    let random = Math.random() * totalWeight;
+                                    for (const candidate of candidates) {
+                                        random -= candidate.weight;
+                                        if (random <= 0) {
+                                            targetEdge = candidate.edge;
+                                            break;
+                                        }
+                                    }
+                                }
+                                // Fallback to first if sort failed (rare) or random fallback if totalWeight 0
+                                if (!targetEdge) targetEdge = validTargets[0];
+                            } else {
+                                // Default Behavior: Round Robin (per User Request)
+                                // Only applies to Load Balancers & Traffic Managers (if not geo-routed)
+                                if (validTargets.length > 0) {
+                                    // 1. Sort targets deterministically to ensure stable rotation
+                                    // (Edge IDs are unique and stable)
+                                    validTargets.sort((a, b) => a.id.localeCompare(b.id));
+
+                                    // 2. Get current rotation index
+                                    // Check pending update first, then current state
+                                    const pendingUpdate = nodeUpdates[node.id];
+                                    let rrIndex = pendingUpdate?.roundRobinIndex ?? node.roundRobinIndex ?? 0;
+
+                                    // 3. Select Target
+                                    targetEdge = validTargets[rrIndex % validTargets.length];
+
+                                    // 4. Increment Index (and save to update)
+                                    rrIndex++;
+                                    if (!nodeUpdates[node.id]) nodeUpdates[node.id] = { ...node };
+                                    nodeUpdates[node.id].roundRobinIndex = rrIndex;
+                                }
                             }
-                            // Else: All targets are remote (or equally global), keep random choice
                         }
 
-                        // Final Fallback: Random Choice
+                        // Final Fallback: Random Choice (should rarely be hit if above logic works)
                         if (!targetEdge) {
                             targetEdge = validTargets[Math.floor(Math.random() * validTargets.length)];
                         }
@@ -504,7 +587,37 @@ export const useGameLoop = () => {
                     if (node.type === 'internet') {
                         const connectedEdges = Object.values(edges).filter(e => e.source === node.id);
                         connectedEdges.forEach(edge => {
-                            const isAttack = Math.random() < 0.3; // 30% Attack Rate
+                            // Attack Logic:
+                            // 1. Default (Sandbox): Random 30% chance.
+                            // 2. Story Mode (Active Types): Only if 'http-attack' is explicitly allowed.
+
+                            const activeTypes = useGameStore.getState().activePacketTypes;
+                            let isAttack = false;
+
+                            if (activeTypes && activeTypes.length > 0) {
+                                // Story Mode / Restricted
+                                if (activeTypes.includes('http-attack')) {
+                                    isAttack = Math.random() < 0.3;
+                                }
+                            } else {
+                                // Sandbox / Open
+                                isAttack = Math.random() < 0.3;
+                            }
+
+                            let candidateType: PacketType = 'http-compute';
+
+                            if (activeTypes && activeTypes.length > 0) {
+                                // Pick specific allowed type
+                                const allowedForSpawn = activeTypes.filter(t => t !== 'http-attack'); // specific content types
+                                if (allowedForSpawn.length > 0) {
+                                    const typeStr = allowedForSpawn[Math.floor(Math.random() * allowedForSpawn.length)];
+                                    candidateType = typeStr as PacketType;
+                                }
+                            } else {
+                                // Default Mix
+                                candidateType = Math.random() < 0.33 ? 'http-compute' :
+                                    Math.random() < 0.5 ? 'http-db' : 'http-storage';
+                            }
 
                             // Determine Origin
                             // If node has hardcoded origin, use it. Otherwise random.
@@ -515,10 +628,7 @@ export const useGameLoop = () => {
                                 id: `p-${Date.now()}-${Math.random()}`,
                                 edgeId: edge.id,
                                 progress: 0,
-                                type: isAttack ? 'http-attack' : (
-                                    Math.random() < 0.33 ? 'http-compute' :
-                                        Math.random() < 0.5 ? 'http-db' : 'http-storage'
-                                ),
+                                type: isAttack ? 'http-attack' : candidateType,
                                 routeStack: [node.id, edge.target], // Include Source AND Target (First Hop)
                                 speed: PACKET_SPEED,
                                 originRegion: origin

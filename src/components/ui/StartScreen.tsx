@@ -9,7 +9,7 @@ export const StartScreen: React.FC = () => {
 
     const handleStartStory = () => {
         resetToStoryState();
-        setSpawnRate(500); // Start slow (2 req/s)
+        setSpawnRate(2000); // Start slow (0.5 req/s)
         addNotification("Welcome to Cloud Tycoon! Traffic is light... for now.", "info");
 
         // Schedule first difficulty increase? This might belong in GameLoop or a hook.

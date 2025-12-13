@@ -58,6 +58,9 @@ export interface GameNode {
     processingMultiplier?: number;
     activeTasks?: Task[];
     utilization?: number; // 0.0 to 1.0
+    droppedPackets?: Record<string, number>; // { 'http-compute': 10, 'http-db': 5 }
+    upgrades?: string[]; // List of active upgrade IDs (e.g., 'smart-routing')
+    roundRobinIndex?: number; // For non-smart LB rotation
 
     // Serverless specific
     freeRequestsRemaining?: number;
