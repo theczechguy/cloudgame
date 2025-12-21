@@ -6,6 +6,8 @@ import { UPGRADES } from '../../config/upgrades';
 export const Inspector: React.FC = () => {
     const nodes = useGameStore((state) => state.nodes);
     const regions = useGameStore((state) => state.regions);
+    const sandboxMode = useGameStore((state) => state.sandboxMode);
+    const money = useGameStore((state) => state.money);
 
     // Selection State
     const selectedNodeIds = useGameStore((state) => state.selectedNodeIds);
@@ -147,7 +149,7 @@ export const Inspector: React.FC = () => {
                                 <div className="flex flex-col gap-2">
                                     {applicableUpgrades.map(upgrade => {
                                         const hasUpgrade = node.upgrades?.includes(upgrade.id);
-                                        const canAfford = useGameStore.getState().money >= upgrade.cost;
+                                        const canAfford = money >= upgrade.cost;
 
                                         return (
                                             <div key={upgrade.id} className="bg-gray-800/50 p-2 rounded border border-gray-700">
@@ -156,26 +158,29 @@ export const Inspector: React.FC = () => {
                                                     {hasUpgrade ? (
                                                         <span className="text-[10px] bg-green-900/50 text-green-300 px-1.5 py-0.5 rounded border border-green-700">INSTALLED</span>
                                                     ) : (
-                                                        <span className="text-xs font-mono text-yellow-400">${upgrade.cost}</span>
+                                                        <span className="text-xs font-mono text-yellow-400">
+                                                            {sandboxMode ? <span className="text-green-400">FREE</span> : `$${upgrade.cost}`}
+                                                        </span>
                                                     )}
                                                 </div>
                                                 <p className="text-[10px] text-gray-400 leading-tight mb-2">{upgrade.description}</p>
 
                                                 {!hasUpgrade && (
                                                     <button
-                                                        disabled={!canAfford}
+                                                        disabled={!sandboxMode && !canAfford}
                                                         onClick={() => {
-                                                            if (canAfford) {
-                                                                useGameStore.getState().updateMoney(-upgrade.cost);
+                                                            const actuallyCanAfford = sandboxMode || canAfford;
+                                                            if (actuallyCanAfford) {
+                                                                if (!sandboxMode) useGameStore.getState().updateMoney(-upgrade.cost);
                                                                 updateNode(node.id, { upgrades: [...(node.upgrades || []), upgrade.id] });
                                                             }
                                                         }}
-                                                        className={`w-full py-1 text-[10px] uppercase font-bold rounded transition-colors ${canAfford
+                                                        className={`w-full py-1 text-[10px] uppercase font-bold rounded transition-colors ${sandboxMode || canAfford
                                                             ? 'bg-cyan-700 hover:bg-cyan-600 text-white'
                                                             : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                                                             }`}
                                                     >
-                                                        {canAfford ? 'Purchase' : 'Insufficent Funds'}
+                                                        {sandboxMode || canAfford ? 'Purchase' : 'Insufficent Funds'}
                                                     </button>
                                                 )}
                                             </div>
@@ -193,7 +198,7 @@ export const Inspector: React.FC = () => {
     if (!content) return null;
 
     return (
-        <div className="absolute top-20 right-4 z-[100] bg-gray-900/95 border border-gray-700 rounded-lg shadow-2xl p-4 w-64 backdrop-blur-sm pointer-events-auto">
+        <div className="bg-gray-900/95 border border-gray-700 rounded-lg shadow-2xl p-4 w-64 backdrop-blur-sm pointer-events-auto">
             {content}
         </div>
     );

@@ -9,6 +9,7 @@ import { StartScreen } from './components/ui/StartScreen';
 import { MessageCenter } from './components/ui/MessageCenter';
 import { StoryManager } from './engine/StoryManager';
 import { MissionBriefing } from './components/ui/MissionBriefing';
+import { GameOverOverlay } from './components/ui/GameOverOverlay';
 import { useGameStore } from './store/gameStore';
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
       <MissionBriefing />
       <MessageCenter />
       <Alerts />
+      <GameOverOverlay />
 
       <Board />
 
@@ -29,7 +31,11 @@ function App() {
           <Inspector />
           <div className="absolute top-4 left-4 z-50 flex flex-col gap-4 items-start pointer-events-none">
             <StatsHUD />
+          </div>
+
+          <div className="absolute top-4 right-4 z-50 flex flex-col gap-4 items-end pointer-events-none">
             {gameMode === 'sandbox' && <TrafficControl />}
+            <Inspector />
           </div>
           <ServicePalette />
           <Legend />

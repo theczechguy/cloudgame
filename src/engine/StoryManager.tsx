@@ -4,13 +4,12 @@ import { STORY_WAVES } from '../config/storyWaves';
 
 export const StoryManager = () => {
     const gameMode = useGameStore((state) => state.gameMode);
+    const currentWaveIndex = useGameStore((state) => state.currentWaveIndex);
+    const setWaveIndex = useGameStore((state) => state.setWaveIndex);
     const setWaveConfig = useGameStore((state) => state.setWaveConfig);
     const addNotification = useGameStore((state) => state.addNotification);
     const isPaused = useGameStore((state) => state.isPaused);
     const togglePause = useGameStore((state) => state.togglePause);
-
-    // Wave State
-    const [currentWaveIndex, setCurrentWaveIndex] = useState(0);
     const [progress, setProgress] = useState(0);
     const [waveTimeLeft, setWaveTimeLeft] = useState(30);
 
@@ -20,7 +19,7 @@ export const StoryManager = () => {
     useEffect(() => {
         if (gameMode !== 'story') {
             setProgress(0);
-            setCurrentWaveIndex(0);
+            setWaveIndex(0);
             waveInitializedRef.current = false;
             return;
         }
@@ -28,7 +27,7 @@ export const StoryManager = () => {
         // Initialize First Wave
         if (!waveInitializedRef.current) {
             const firstWave = STORY_WAVES[0];
-            setWaveConfig(firstWave.types, firstWave.rate);
+            setWaveConfig(firstWave.traffic);
             startTimeRef.current = Date.now();
             waveInitializedRef.current = true;
             // addNotification(firstWave.message, 'info'); // Maybe too noisy on immediate start
@@ -64,8 +63,8 @@ export const StoryManager = () => {
                 if (nextIndex < STORY_WAVES.length) {
                     // Advance to Next Defined Wave
                     const nextWave = STORY_WAVES[nextIndex];
-                    setCurrentWaveIndex(nextIndex);
-                    setWaveConfig(nextWave.types, nextWave.rate);
+                    setWaveIndex(nextIndex);
+                    setWaveConfig(nextWave.traffic);
                     addNotification(nextWave.message, 'info');
 
                     // Reset Timer

@@ -7,7 +7,8 @@ import { useGameStore } from '../../store/gameStore';
 export const ServicePalette: React.FC = () => {
     const money = useGameStore((state) => state.money);
     const sandboxMode = useGameStore((state) => state.sandboxMode);
-    const [hoveredService, setHoveredService] = useState<NodeType | null>(null);
+    const addRegion = useGameStore((state) => state.addRegion);
+    const [hoveredService, setHoveredService] = useState<NodeType | 'region' | null>(null);
 
     const handleDragStart = (e: React.DragEvent, type: NodeType, canAfford: boolean) => {
         if (!canAfford) {
@@ -16,6 +17,17 @@ export const ServicePalette: React.FC = () => {
         }
         e.dataTransfer.setData('application/reactflow', type);
         e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleSpawnRegion = () => {
+        addRegion({
+            id: `region-${Date.now()}`,
+            label: 'New Region',
+            x: 1400 + (Math.random() * 200),
+            y: 1400 + (Math.random() * 200),
+            width: 300,
+            height: 300
+        });
     };
 
     return (
@@ -27,14 +39,16 @@ export const ServicePalette: React.FC = () => {
                     <div className="bg-gray-900/95 border border-azure-border rounded-lg p-3 shadow-xl text-center backdrop-blur-md animate-fade-in-up">
                         <div className="flex items-center justify-center gap-2 mb-1">
                             <span className="text-xl text-azure-blue">
-                                {SERVICE_CATALOG.find(s => s.type === hoveredService)?.icon}
+                                {hoveredService === 'region' ? '🗺️' : SERVICE_CATALOG.find(s => s.type === hoveredService)?.icon}
                             </span>
                             <span className="font-bold text-white">
-                                {SERVICE_CATALOG.find(s => s.type === hoveredService)?.label}
+                                {hoveredService === 'region' ? 'Cloud Region' : SERVICE_CATALOG.find(s => s.type === hoveredService)?.label}
                             </span>
                         </div>
                         <p className="text-gray-400 text-xs max-w-xs">
-                            {SERVICE_CATALOG.find(s => s.type === hoveredService)?.description}
+                            {hoveredService === 'region'
+                                ? 'Define a geographical boundary for your services. Required for multi-region compliance and latency optimization.'
+                                : SERVICE_CATALOG.find(s => s.type === hoveredService)?.description}
                         </p>
                     </div>
                 )}
@@ -84,6 +98,24 @@ export const ServicePalette: React.FC = () => {
                                 </div>
                             );
                         })}
+
+                        {/* Special case: Region button in the network group */}
+                        {group.id === 'network' && (
+                            <div
+                                onClick={handleSpawnRegion}
+                                onMouseEnter={() => setHoveredService('region')}
+                                onMouseLeave={() => setHoveredService(null)}
+                                className="group relative w-16 h-16 rounded-xl flex flex-col items-center justify-center bg-blue-900/20 hover:bg-blue-900/40 transition-all duration-200 border border-transparent hover:border-blue-500/50 hover:scale-110 hover:-translate-y-1 hover:shadow-lg cursor-pointer"
+                            >
+                                <span className="text-2xl mb-1 filter drop-shadow-md group-hover:drop-shadow-lg transition-transform">
+                                    🗺️
+                                </span>
+                                <span className="text-[10px] font-mono font-bold text-blue-400">
+                                    FREE
+                                </span>
+                            </div>
+                        )}
+
                         {/* Separator */}
                         {groupIndex < groups.length - 1 && (
                             <div className="w-px h-10 bg-gray-700 mx-1" />

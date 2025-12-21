@@ -8,13 +8,14 @@ const PACKET_SPEED = 0.5; // Progress per second
 export const useGameLoop = () => {
     const requestRef = useRef<number | undefined>(undefined);
     const previousTimeRef = useRef<number | undefined>(undefined);
-    const lastSpawnTimeRef = useRef<number>(0);
+    const lastSpawnTimeRef = useRef<Record<string, number>>({});
 
     const updateMoney = useGameStore((state) => state.updateMoney);
+    const currentWaveIndex = useGameStore((state) => state.currentWaveIndex);
 
     // Failed request penalty tracking
     const penalizedRequestsRef = useRef<Record<string, number>>({});
-    const FAILED_REQUEST_PENALTY = 10; // dollars per failed logical request
+    const FAILED_REQUEST_PENALTY = 20; // dollars per failed logical request
     const PENALTY_WINDOW = 10000; // ms during which the same request is not double-penalized
 
     // Upkeep Timer
@@ -47,7 +48,7 @@ export const useGameLoop = () => {
                 const last = penalizedRequestsRef.current[rootId] || 0;
                 if (now - last > PENALTY_WINDOW) {
                     penalizedRequestsRef.current[rootId] = now;
-                    updateMoney(-FAILED_REQUEST_PENALTY);
+                    updateMoney(-FAILED_REQUEST_PENALTY, 'drop', undefined, nodeId);
                     // Emit drop event for visuals
                     useGameStore.getState().addDrop({ nodeId, x: pos?.x, y: pos?.y });
                 }
@@ -63,18 +64,30 @@ export const useGameLoop = () => {
                 Object.values(nodes).forEach(node => {
                     const def = SERVICE_CATALOG.find(s => s.type === node.type);
                     if (def && typeof def.upkeep === 'number') {
-                        totalUpkeep += def.upkeep;
+                        // Dynamic Upkeep: Busy servers cost more to maintain (Power/Cooling)
+                        const utilization = node.utilization || 0;
+                        totalUpkeep += def.upkeep * (1 + utilization);
                     }
                     if (node.type === 'azure-monitor') hasMonitor = true;
                 });
 
-                // Base upkeep
-                totalUpkeep += 20;
+                // Cloud Foundation (foundational cloud costs, base infra)
+                // Scales with infrastructure complexity
+                const nodeCount = Object.keys(nodes).length;
+                const eliteNodes = Object.values(nodes).filter(n => ['sql-db-premium', 'cosmos-db'].includes(n.type)).length;
+                const baseUpkeep = 1 + (nodeCount * 2) + (eliteNodes * 4);
+                totalUpkeep += baseUpkeep;
 
                 // Region Upkeep
                 // Each region costs extra (Infrastructure)
                 const regionCount = Object.keys(regions).length;
-                totalUpkeep += regionCount * 50;
+                totalUpkeep += regionCount * 75;
+
+                // Infrastructure Tax: 5% of recent income
+                const recentIncome = useGameStore.getState().recentIncome;
+                if (recentIncome > 0) {
+                    totalUpkeep += recentIncome * 0.05;
+                }
 
                 if (totalUpkeep > 0) updateMoney(-totalUpkeep);
                 lastUpkeepTimeRef.current = time;
@@ -84,6 +97,9 @@ export const useGameLoop = () => {
                 if (wasMonitored !== hasMonitor) {
                     useGameStore.setState({ isMonitored: hasMonitor });
                 }
+
+                // Periodic Metrics Refresh (Ensures stats return to 0 when idle)
+                useGameStore.getState().refreshMetrics();
             }
 
             // 1. Move Packets
@@ -136,6 +152,9 @@ export const useGameLoop = () => {
                     // Cross-Region Traffic is SLOW
                     // 0.25 = 4x latency penalty
                     speedMultiplier = 0.25;
+
+                    // Bandwidth Cost: $1 per cross-region packet
+                    updateMoney(-1, 'bandwidth');
                 }
 
                 p.progress += p.speed * speedMultiplier * deltaTime;
@@ -148,10 +167,15 @@ export const useGameLoop = () => {
                     if (targetNode) {
                         // SPECIAL: Internet Receiving Response = $$$ (award even if internet queue is 0)
                         if (targetNode.type === 'internet' && p.type === 'http-response') {
-                            // Check for SLA Violation
                             const isViolated = p.slaViolated;
-                            const reward = isViolated ? 25 : 50; // 50% penalty
-                            updateMoney(reward);
+                            // Early Stage Boost: Waves 1 & 2 (index 0, 1) pay $15/packet to fund the startup
+                            const baseReward = currentWaveIndex <= 2 ? 15 : 12;
+                            const slaPenalty = 9;
+
+                            updateMoney(baseReward, 'reward');
+                            if (isViolated) {
+                                updateMoney(-slaPenalty, 'sla-loss', p.originRegion);
+                            }
 
                             if (isViolated) {
                                 // Maybe add a small visual drop or alert?
@@ -339,9 +363,10 @@ export const useGameLoop = () => {
                             // Fallback if stack is corrupted/empty (should not happen): Allow valid types
                         }
 
-                        // REQUESTS: Enforce Downstream Flow (No reversed edges)
-                        if (!['http-response', 'db-result', 'storage-result'].includes(nextType) && edge.reversed) {
-                            return false;
+                        // REQUESTS: Allow all connections but prevent loops
+                        if (!['http-response', 'db-result', 'storage-result'].includes(nextType)) {
+                            // Loop Prevention: Cannot go back to any node already visited in the stack
+                            if (packet.routeStack && packet.routeStack.includes(edge.target)) return false;
                         }
 
                         if (nextType === 'db-query') return ['sql-db', 'sql-db-premium', 'cosmos-db', 'storage-queue', 'redis', 'load-balancer', 'traffic-manager'].includes(target.type);
@@ -379,6 +404,7 @@ export const useGameLoop = () => {
 
                             // UPGRADE CHECK: Smart Routing (Weighted Availability)
                             if (node.upgrades?.includes('smart-routing')) {
+                                // ... (Smart Routing logic remains unchanged)
                                 // Calculate weights based on available capacity (Max Queue - Current Queue)
                                 const candidates = validTargets.map(edge => {
                                     const t = getNode(edge.target);
@@ -433,7 +459,10 @@ export const useGameLoop = () => {
                                     let rrIndex = pendingUpdate?.roundRobinIndex ?? node.roundRobinIndex ?? 0;
 
                                     // 3. Select Target
-                                    targetEdge = validTargets[rrIndex % validTargets.length];
+                                    // RESONANCE BREAKING: Use a small random jitter to avoid periodic traffic lock-in
+                                    // We still follow the general RR cadence but shift the starting point periodically
+                                    const jitter = Math.floor(Math.random() * validTargets.length);
+                                    targetEdge = validTargets[(rrIndex + jitter) % validTargets.length];
 
                                     // 4. Increment Index (and save to update)
                                     rrIndex++;
@@ -580,63 +609,75 @@ export const useGameLoop = () => {
 
             // 3. Spawn Packets
             const spawnedPackets: Packet[] = [];
-            const spawnRate = useGameStore.getState().spawnRate;
+            const trafficConfig = useGameStore.getState().activeTrafficConfig;
 
-            if (time - lastSpawnTimeRef.current > spawnRate) {
-                Object.values(nodes).forEach(node => {
-                    if (node.type === 'internet') {
-                        const connectedEdges = Object.values(edges).filter(e => e.source === node.id);
-                        connectedEdges.forEach(edge => {
-                            // Attack Logic:
-                            // 1. Default (Sandbox): Random 30% chance.
-                            // 2. Story Mode (Active Types): Only if 'http-attack' is explicitly allowed.
+            const now_sim = time;
 
-                            const activeTypes = useGameStore.getState().activePacketTypes;
-                            let isAttack = false;
+            if (trafficConfig && trafficConfig.length > 0) {
+                // Granular Story Mode Spawning
+                trafficConfig.forEach(config => {
+                    const lastSpawn = lastSpawnTimeRef.current[config.type] || 0;
+                    if (now_sim - lastSpawn > config.rate) {
+                        Object.values(nodes).forEach(node => {
+                            if (node.type === 'internet') {
+                                const connectedEdges = Object.values(edges).filter(e => e.source === node.id || e.target === node.id);
+                                connectedEdges.forEach(edge => {
+                                    const isReversed = edge.target === node.id;
+                                    const targetNodeId = isReversed ? edge.source : edge.target;
 
-                            if (activeTypes && activeTypes.length > 0) {
-                                // Story Mode / Restricted
-                                if (activeTypes.includes('http-attack')) {
-                                    isAttack = Math.random() < 0.3;
-                                }
-                            } else {
-                                // Sandbox / Open
-                                isAttack = Math.random() < 0.3;
+                                    const GEO_REGIONS = ['North America', 'Europe', 'Asia Pacific', 'South America'];
+                                    const origin = node.trafficOrigin || GEO_REGIONS[Math.floor(Math.random() * GEO_REGIONS.length)];
+
+                                    spawnedPackets.push({
+                                        id: `p-${Date.now()}-${Math.random()}`,
+                                        edgeId: edge.id,
+                                        progress: 0,
+                                        type: config.type,
+                                        reversed: isReversed,
+                                        routeStack: [node.id, targetNodeId],
+                                        speed: PACKET_SPEED,
+                                        originRegion: origin
+                                    });
+                                });
                             }
-
-                            let candidateType: PacketType = 'http-compute';
-
-                            if (activeTypes && activeTypes.length > 0) {
-                                // Pick specific allowed type
-                                const allowedForSpawn = activeTypes.filter(t => t !== 'http-attack'); // specific content types
-                                if (allowedForSpawn.length > 0) {
-                                    const typeStr = allowedForSpawn[Math.floor(Math.random() * allowedForSpawn.length)];
-                                    candidateType = typeStr as PacketType;
-                                }
-                            } else {
-                                // Default Mix
-                                candidateType = Math.random() < 0.33 ? 'http-compute' :
-                                    Math.random() < 0.5 ? 'http-db' : 'http-storage';
-                            }
-
-                            // Determine Origin
-                            // If node has hardcoded origin, use it. Otherwise random.
-                            const GEO_REGIONS = ['North America', 'Europe', 'Asia Pacific', 'South America'];
-                            const origin = node.trafficOrigin || GEO_REGIONS[Math.floor(Math.random() * GEO_REGIONS.length)];
-
-                            spawnedPackets.push({
-                                id: `p-${Date.now()}-${Math.random()}`,
-                                edgeId: edge.id,
-                                progress: 0,
-                                type: isAttack ? 'http-attack' : candidateType,
-                                routeStack: [node.id, edge.target], // Include Source AND Target (First Hop)
-                                speed: PACKET_SPEED,
-                                originRegion: origin
-                            });
                         });
+                        lastSpawnTimeRef.current[config.type] = now_sim;
                     }
                 });
-                lastSpawnTimeRef.current = time;
+            } else {
+                // Legacy / Sandbox Spawning (Fallback)
+                const spawnRate = useGameStore.getState().spawnRate;
+                const lastSpawn = lastSpawnTimeRef.current['_default'] || 0;
+                if (now_sim - lastSpawn > spawnRate) {
+                    Object.values(nodes).forEach(node => {
+                        if (node.type === 'internet') {
+                            const connectedEdges = Object.values(edges).filter(e => e.source === node.id || e.target === node.id);
+                            connectedEdges.forEach(edge => {
+                                const isReversed = edge.target === node.id;
+                                const targetNodeId = isReversed ? edge.source : edge.target;
+
+                                const isAttack = Math.random() < 0.3;
+                                const candidateType: PacketType = Math.random() < 0.33 ? 'http-compute' :
+                                    Math.random() < 0.5 ? 'http-db' : 'http-storage';
+
+                                const GEO_REGIONS = ['North America', 'Europe', 'Asia Pacific', 'South America'];
+                                const origin = node.trafficOrigin || GEO_REGIONS[Math.floor(Math.random() * GEO_REGIONS.length)];
+
+                                spawnedPackets.push({
+                                    id: `p-${Date.now()}-${Math.random()}`,
+                                    edgeId: edge.id,
+                                    progress: 0,
+                                    type: isAttack ? 'http-attack' : candidateType,
+                                    reversed: isReversed,
+                                    routeStack: [node.id, targetNodeId],
+                                    speed: PACKET_SPEED,
+                                    originRegion: origin
+                                });
+                            });
+                        }
+                    });
+                    lastSpawnTimeRef.current['_default'] = now_sim;
+                }
             }
 
             // 3b. Telemetry Spawning (Independent Loop)

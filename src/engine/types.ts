@@ -86,7 +86,12 @@ export interface GameState {
     money: number;
     score: number;
     recentIncome: number;
-    incomeEvents?: Array<{ t: number; amt: number }>;
+    recentBandwidthCost: number; // For Monitor HUD
+    recentSlaLoss: number;       // For Monitor HUD
+    recentDropLoss: number;      // For Monitor HUD
+    recentSlaLossByRegion: Record<string, number>;
+    recentDropLossByNode: Record<string, number>;
+    incomeEvents?: Array<{ t: number; amt: number; type?: 'bandwidth' | 'sla-loss' | 'reward' | 'drop'; region?: string; nodeId?: string }>;
 
     // Monitoring
     isMonitored?: boolean; // True if Azure Monitor is active
@@ -102,9 +107,12 @@ export interface GameState {
     // Simulation
     spawnRate: number; // ms interval
     sandboxMode: boolean;
+    currentWaveIndex: number; // To calculate story-specific logic like revenue scaling
+    isGameOver?: boolean;
+    gameOverReason?: string | null;
 
     // Actions
-    updateMoney: (amount: number) => void;
+    updateMoney: (amount: number, type?: 'bandwidth' | 'sla-loss' | 'reward' | 'drop', region?: string, nodeId?: string) => void;
     addNode: (node: GameNode) => void;
     updateNode: (id: string, updates: Partial<GameNode>) => void;
     removeNode: (id: string) => void;

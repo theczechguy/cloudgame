@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import type { GameNode, GameEdge, GameState, Packet } from '../engine/types';
+import type { TrafficConfig } from '../config/storyWaves';
 // Base stats moved to catalog, but logic here mainly state container
 
-type IncomeEvent = { t: number; amt: number };
+type IncomeEvent = { t: number; amt: number; type?: 'bandwidth' | 'sla-loss' | 'reward' | 'drop'; region?: string; nodeId?: string };
 
 interface GameStore extends GameState {
     // Actions
@@ -32,7 +33,8 @@ interface GameStore extends GameState {
     setGameMode: (mode: 'sandbox' | 'story' | null) => void;
     setStoryStage: (stage: number) => void;
     resetToStoryState: () => void;
-    setWaveConfig: (types: string[] | null, rate: number) => void;
+    setWaveConfig: (config: TrafficConfig[] | null) => void;
+    setWaveIndex: (index: number) => void;
 
     showStoryIntro: boolean;
     setShowStoryIntro: (show: boolean) => void;
@@ -41,13 +43,53 @@ interface GameStore extends GameState {
     togglePause: () => void;
 
     // Simulation Config
-    activePacketTypes: string[] | null;
+    activeTrafficConfig: TrafficConfig[] | null;
 
     // Notifications
     notifications: Array<{ id: string; message: string; type: 'info' | 'warning' | 'error'; timestamp: number }>;
     addNotification: (message: string, type?: 'info' | 'warning' | 'error') => void;
     removeNotification: (id: string) => void;
+
+    // Derived Stats (for Monitor)
+    refreshMetrics: () => void;
 }
+
+const calculateRecentStats = (incomeEvents: IncomeEvent[], dropEvents: Array<{ t: number }>) => {
+    const now = Date.now();
+    const cutoff5s = now - 5000;
+    const cutoff1s = now - 1000;
+
+    const keptIncome = incomeEvents.filter(e => e.t >= cutoff5s);
+    const keptDropsVisual = dropEvents.filter(e => e.t >= cutoff5s); // Keep 5s for visuals
+    const keptDropsStat = dropEvents.filter(e => e.t >= cutoff1s); // Only 1s for the HUD number
+
+    const recentIncome = keptIncome.reduce((s, e) => s + e.amt, 0) / 5;
+    const recentBandwidthCost = keptIncome.filter(e => e.type === 'bandwidth').reduce((s, e) => s + Math.abs(e.amt), 0) / 5;
+    const recentSlaLoss = keptIncome.filter(e => e.type === 'sla-loss').reduce((s, e) => s + Math.abs(e.amt), 0) / 5;
+    const recentDropLoss = keptIncome.filter(e => e.type === 'drop').reduce((s, e) => s + Math.abs(e.amt), 0) / 5;
+
+    const recentSlaLossByRegion: Record<string, number> = {};
+    keptIncome.filter(e => e.type === 'sla-loss' && e.region).forEach(e => {
+        recentSlaLossByRegion[e.region!] = (recentSlaLossByRegion[e.region!] || 0) + (Math.abs(e.amt) / 5);
+    });
+
+    const recentDropLossByNode: Record<string, number> = {};
+    keptIncome.filter(e => e.type === 'drop' && e.nodeId).forEach(e => {
+        recentDropLossByNode[e.nodeId!] = (recentDropLossByNode[e.nodeId!] || 0) + (Math.abs(e.amt) / 5);
+    });
+
+    return {
+        incomeEvents: keptIncome,
+        dropEvents: keptDropsVisual,
+        recentIncome,
+        recentBandwidthCost,
+        recentSlaLoss,
+        recentSlaLossByRegion,
+        recentDropLoss,
+        recentDropLossByNode,
+        recentDrops: keptDropsStat.length // Unsmoothed 1s total
+    };
+};
 
 export const useGameStore = create<GameStore>((set) => ({
     // ... initial state ...
@@ -95,8 +137,13 @@ export const useGameStore = create<GameStore>((set) => ({
         'e11': { id: 'e11', source: 'vm-1', target: 'blob-1' },
     },
     packets: [],
-    money: 5000, // Higher starting capital for complex setup
+    money: 500,
     recentIncome: 0,
+    recentBandwidthCost: 0,
+    recentSlaLoss: 0,
+    recentDropLoss: 0,
+    recentSlaLossByRegion: {},
+    recentDropLossByNode: {},
     incomeEvents: [],
     totalDrops: 0,
     recentDrops: 0,
@@ -106,7 +153,10 @@ export const useGameStore = create<GameStore>((set) => ({
     score: 0,
     fps: 60,
     spawnRate: 999999, // Essentially paused until game starts
-    activePacketTypes: null, // Default to all
+    activeTrafficConfig: null, // Default to all
+    currentWaveIndex: 0,
+    isGameOver: false,
+    gameOverReason: null,
 
 
 
@@ -141,10 +191,11 @@ export const useGameStore = create<GameStore>((set) => ({
     setStoryStage: (stage) => set({ storyStage: stage }),
     resetToStoryState: () => set({
         gameMode: 'story',
-        money: 500, // Harder start
+        money: 750, // Harder start (was 500)
         regions: {}, // No regions
 
         // Minimal Global Setup
+        currentWaveIndex: 0,
         nodes: {
             'internet-1': { id: 'internet-1', type: 'internet', position: { x: 1300, y: 1300 }, label: 'Internet', queue: [], maxQueueSize: 0, processingSpeed: 0, utilization: 0 },
             'func-1': { id: 'func-1', type: 'function-app', position: { x: 1300, y: 1600 }, label: 'Function App', queue: [], maxQueueSize: 10, processingSpeed: 2, processingMultiplier: 1.2, utilization: 0, freeRequestsRemaining: 100 },
@@ -155,8 +206,10 @@ export const useGameStore = create<GameStore>((set) => ({
         },
         packets: [],
         storyStage: 0,
-        activePacketTypes: ['http-compute'], // Start with simple compute only (Wave 1)
-        showStoryIntro: true
+        activeTrafficConfig: [{ type: 'http-compute', rate: 2000 }], // Start with simple compute only (Wave 1)
+        showStoryIntro: true,
+        isGameOver: false,
+        gameOverReason: null
     }),
 
     showStoryIntro: false,
@@ -186,7 +239,8 @@ export const useGameStore = create<GameStore>((set) => ({
     })),
     toggleSandboxMode: () => set((state) => ({ sandboxMode: !state.sandboxMode })),
     setSpawnRate: (rate) => set({ spawnRate: rate }),
-    setWaveConfig: (types, rate) => set({ activePacketTypes: types, spawnRate: rate }), // NEW
+    setWaveConfig: (config) => set({ activeTrafficConfig: config }), // NEW
+    setWaveIndex: (index) => set({ currentWaveIndex: index }),
     updateNodePosition: (id, position) => set((state) => {
         // If the node being moved is part of a selection, we must move ALL selected nodes by the delta
         // BUT `updateNodePosition` is usually called with absolute position for the dragged node.
@@ -244,19 +298,12 @@ export const useGameStore = create<GameStore>((set) => ({
         const sourceNode = state.nodes[edge.source];
         const targetNode = state.nodes[edge.target];
 
-        // 1. Prevent Incoming Connections to Internet
-        if (targetNode?.type === 'internet') {
-            return {
-                notifications: [
-                    ...state.notifications,
-                    {
-                        id: Math.random().toString(36).substr(2, 9),
-                        message: "Cannot connect TO the Internet node. It is a Source.",
-                        type: 'warning',
-                        timestamp: Date.now()
-                    }
-                ]
-            };
+        // 1. Warning: Connection to Internet as a Sink
+        // We allow it (direction independence), but let's notify the user if they might be confused
+        // about data flow (requests always start FROM the internet).
+        if (targetNode?.type === 'internet' && sourceNode?.type !== 'internet') {
+            // We don't block it anymore, but we can still notify if we want.
+            // Actually, let's just make it silent and work.
         }
 
         // 2. Validation: Internet Node Limit (Outgoing)
@@ -451,26 +498,44 @@ export const useGameStore = create<GameStore>((set) => ({
     addDrop: (event) => set((state) => {
         const now = Date.now();
         const events = [...state.dropEvents, { t: now, nodeId: event.nodeId, x: event.x, y: event.y }];
-        // keep recent events for 5s to allow visuals
-        const cutoff = now - 5000;
-        const kept = events.filter(e => e.t >= cutoff);
-        // recentDrops over 1s
-        const cutoffRecent = now - 1000;
-        const recent = kept.filter(e => e.t >= cutoffRecent).length;
+
         const nodeLast = { ...state.nodeLastDrop };
         if (event.nodeId) nodeLast[event.nodeId] = now;
-        return { dropEvents: kept, totalDrops: state.totalDrops + 1, recentDrops: recent, nodeLastDrop: nodeLast };
+
+        const nextState = {
+            dropEvents: events,
+            totalDrops: state.totalDrops + 1,
+            nodeLastDrop: nodeLast
+        };
+
+        // Trigger immediate recalculation
+        const stats = calculateRecentStats(state.incomeEvents || [], events);
+        return { ...nextState, ...stats };
     }),
     addCacheHit: (nodeId) => set((state) => ({
         nodeLastCacheHit: { ...state.nodeLastCacheHit, [nodeId]: Date.now() }
     })),
-    updateMoney: (amount) => set((state) => {
+    updateMoney: (amount, type, region, nodeId) => set((state) => {
         const now = Date.now();
-        const events: IncomeEvent[] = [...(state.incomeEvents || []), { t: now, amt: amount }];
-        const cutoff = now - 1000;
-        const kept = events.filter(e => e.t >= cutoff);
-        const recentIncome = kept.reduce((s, e) => s + e.amt, 0);
-        return { money: state.money + amount, incomeEvents: kept, recentIncome };
+        const events: IncomeEvent[] = [...(state.incomeEvents || []), { t: now, amt: amount, type, region, nodeId }];
+
+        const nextMoney = state.money + amount;
+        const isGameOverThreshold = !state.sandboxMode && nextMoney <= -500;
+
+        const nextState = {
+            money: nextMoney,
+            incomeEvents: events,
+            isGameOver: state.isGameOver || isGameOverThreshold,
+            gameOverReason: (state.isGameOver || isGameOverThreshold) ? (state.gameOverReason || "BANKRUPTCY: Your cash reserves hit -$500. The cloud provider has revoked your access.") : null,
+            isPaused: state.isPaused || isGameOverThreshold
+        };
+
+        // Trigger immediate recalculation
+        const stats = calculateRecentStats(events, state.dropEvents || []);
+        return { ...nextState, ...stats };
+    }),
+    refreshMetrics: () => set((state) => {
+        return calculateRecentStats(state.incomeEvents || [], state.dropEvents || []);
     }),
     setFps: (fps) => set({ fps }),
 }));

@@ -85,7 +85,7 @@ export const SERVICE_CATALOG: ServiceDefinition[] = [
         type: 'sql-db-premium',
         label: 'Azure SQL (Premium)',
         cost: 600,
-        upkeep: 40,
+        upkeep: 60,
         description: 'High-perf database. 2x speed & concurrency.',
         icon: '🚀',
         baseStats: {
@@ -99,7 +99,7 @@ export const SERVICE_CATALOG: ServiceDefinition[] = [
         type: 'cosmos-db',
         label: 'Azure Cosmos DB',
         cost: 1200,
-        upkeep: 100,
+        upkeep: 150,
         description: 'Global NoSQL database. Zero latency across regions.',
         icon: '🪐',
         baseStats: {
@@ -127,7 +127,7 @@ export const SERVICE_CATALOG: ServiceDefinition[] = [
         type: 'load-balancer',
         label: 'Load Balancer',
         cost: 150,
-        upkeep: 10,
+        upkeep: 6,
         description: 'Distributes traffic to backend pools.',
         icon: '⚖️',
         baseStats: {
@@ -157,7 +157,7 @@ export const SERVICE_CATALOG: ServiceDefinition[] = [
         label: 'WAF',
         description: 'Elite protection. High throughput.',
         cost: 400,
-        upkeep: 20,
+        upkeep: 35,
         icon: '🏰',
         baseStats: {
             processingSpeed: 50, // Very fast
