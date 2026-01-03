@@ -219,20 +219,33 @@ export const Inspector: React.FC = () => {
                             <h3 className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-2">Traffic Targets</h3>
                             <div className="flex flex-col gap-1">
                                 {(() => {
-                                    // Find connected targets
-                                    const outgoingEdges = Object.values(edges).filter(e => e.source === node.id);
-                                    if (outgoingEdges.length === 0) {
+                                    // Find connected targets (Bidirectional)
+                                    // Users might draw Compute -> LB or LB -> Compute. Both are valid connections.
+                                    const connectedEdges = Object.values(edges).filter(e => e.source === node.id || e.target === node.id);
+
+                                    // Identify unique target nodes that are NOT Internet (upstream)
+                                    const targetIds = new Set<string>();
+                                    connectedEdges.forEach(e => {
+                                        const otherId = e.source === node.id ? e.target : e.source;
+                                        const otherNode = nodes[otherId];
+                                        // Filter out upstream sources that shouldn't be traffic targets
+                                        if (otherNode && otherNode.type !== 'internet') {
+                                            targetIds.add(otherId);
+                                        }
+                                    });
+
+                                    if (targetIds.size === 0) {
                                         return <p className="text-[10px] text-gray-500 italic">No connected downstream nodes.</p>;
                                     }
 
-                                    return outgoingEdges.map(edge => {
-                                        const target = nodes[edge.target];
+                                    return Array.from(targetIds).map(targetId => {
+                                        const target = nodes[targetId];
                                         if (!target) return null;
 
                                         const isDisabled = node.disabledRoutes?.includes(target.id);
 
                                         return (
-                                            <div key={edge.id} className="flex items-center justify-between bg-gray-800/30 p-1.5 rounded border border-gray-700/50">
+                                            <div key={target.id} className="flex items-center justify-between bg-gray-800/30 p-1.5 rounded border border-gray-700/50">
                                                 <div className="flex flex-col overflow-hidden">
                                                     <span className="text-[11px] text-gray-300 font-mono truncate w-32" title={target.label}>{target.label}</span>
                                                     <span className="text-[9px] text-gray-600 truncate">{target.type}</span>
