@@ -58,12 +58,16 @@ export const ServiceNode: React.FC<ServiceNodeProps> = memo(({ id, onMouseDown, 
         : 0;
 
 
+    const isDisabled = node.status === 'disabled';
+
     return (
         <div
             className={`absolute flex flex-col items-center justify-center w-16 h-16 rounded-lg shadow-lg border-2 transition-transform hover:scale-105 active:scale-95
                 ${isSelected ? 'border-white ring-2 ring-blue-400 z-20' : 'border-gray-600 z-10'}
                 ${isConnectSource ? 'ring-2 ring-yellow-400 border-yellow-400 animate-pulse' : ''}
-                bg-gray-800 text-white select-none
+                ${isDisabled ? 'opacity-75 grayscale border-dashed border-red-500/50' : 'bg-gray-800'}
+                ${!isDisabled ? 'bg-gray-800' : 'bg-gray-900'}
+                text-white select-none
             `}
             style={{
                 left: node.position.x,
@@ -75,6 +79,10 @@ export const ServiceNode: React.FC<ServiceNodeProps> = memo(({ id, onMouseDown, 
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
         >
+            {isDisabled && (
+                <div className="absolute -top-2 -right-2 p-0.5 bg-red-900 rounded-full border border-red-500 z-30" title="Draining...">⛔</div>
+            )}
+
             {/* Hover Tooltip for function-app showing free requests bucket */}
             {hovered && node.type === 'function-app' && (
                 <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 pointer-events-none z-30">

@@ -9,6 +9,10 @@ interface GameStore extends GameState {
     // Actions
     addNode: (node: GameNode) => void;
     updateNode: (id: string, updates: Partial<GameNode>) => void;
+    addEdge: (edge: GameEdge) => void;
+    addEdges: (edges: GameEdge[]) => void;
+    removeNode: (id: string) => void;
+    removeEdge: (id: string) => void;
 
     // Sandbox
     sandboxMode: boolean;
@@ -325,6 +329,40 @@ export const useGameStore = create<GameStore>((set) => ({
         }
 
         return { edges: { ...state.edges, [edge.id]: edge } };
+    }),
+    addEdges: (edges) => set((state) => {
+        const newEdges = { ...state.edges };
+        const notifications: any[] = [];
+        let hasChanges = false;
+
+        edges.forEach(edge => {
+            const sourceNode = state.nodes[edge.source];
+            const targetNode = state.nodes[edge.target];
+
+            // 1. Validation: Internet Node Limit (Outgoing)
+            if (sourceNode?.type === 'internet') {
+                const existingEdges = Object.values(newEdges).filter(e => e.source === edge.source);
+                if (existingEdges.length >= 1) {
+                    notifications.push({
+                        id: Math.random().toString(36).substr(2, 9),
+                        message: "Internet Link Saturated! Use a Load Balancer to connect more nodes.",
+                        type: 'warning',
+                        timestamp: Date.now()
+                    });
+                    return; // Skip this edge
+                }
+            }
+
+            newEdges[edge.id] = edge;
+            hasChanges = true;
+        });
+
+        if (!hasChanges && notifications.length === 0) return {};
+
+        return {
+            edges: hasChanges ? newEdges : state.edges,
+            notifications: notifications.length > 0 ? [...state.notifications, ...notifications] : state.notifications
+        };
     }),
     removeEdge: (id) => set((state) => {
         const { [id]: _, ...remainingEdges } = state.edges;

@@ -205,6 +205,25 @@ export const useGameLoop = () => {
                             // So effectively, we only have space if queue < maxQueueSize.
                             // BUT if maxQueueSize is 0, we can accept IF queue is empty AND slots open.
 
+                            // check if node is disabled (only for new requests, not returning responses)
+                            const isResponsePacket = ['http-response', 'db-result', 'storage-result'].includes(p.type);
+                            if (targetNode.status === 'disabled' && !isResponsePacket) {
+                                // Blocked - treated as drop (or we could just not queue it? But it already travelled here)
+                                // If it arrived here, it means routing sent it here.
+                                // If we enforce routing logic correctly, this shouldn't happen often.
+                                // But if it does (e.g. direct flight or race condition), we drop it.
+                                penalizeIfNeeded(p.id, p.type, targetId, targetNode?.position);
+                                // Record Drop Stat
+                                if (!nodeUpdates[targetId]) nodeUpdates[targetId] = { ...targetNode, queue: [...targetNode.queue], activeTasks: targetNode.activeTasks ? [...targetNode.activeTasks] : [] };
+                                const drops = nodeUpdates[targetId].droppedPackets || {};
+                                nodeUpdates[targetId].droppedPackets = {
+                                    ...drops,
+                                    [p.type]: (drops[p.type] || 0) + 1
+                                };
+                                packetsToRemove.add(p.id);
+                                return; // Stop processing
+                            }
+
                             if (currentQueueLen < (targetNode.maxQueueSize + availableProcessingSlots)) {
                                 if (!nodeUpdates[targetId]) nodeUpdates[targetId] = { ...targetNode, queue: [...targetNode.queue], activeTasks: targetNode.activeTasks ? [...targetNode.activeTasks] : [] };
                                 nodeUpdates[targetId].queue.push(p);
@@ -261,6 +280,7 @@ export const useGameLoop = () => {
                 // For each completed task, perform transformation and forward
                 completed.forEach(c => {
                     const packet = c.packet;
+
 
                     // MARK VIOLATION IF COMPUTING IN WRONG REGION
                     const isCompute = ['vm', 'app-service', 'function-app'].includes(node.type);
@@ -365,8 +385,16 @@ export const useGameLoop = () => {
 
                         // REQUESTS: Allow all connections but prevent loops
                         if (!['http-response', 'db-result', 'storage-result'].includes(nextType)) {
-                            // Loop Prevention: Cannot go back to any node already visited in the stack
                             if (packet.routeStack && packet.routeStack.includes(edge.target)) return false;
+                        }
+
+                        // Respect Node Status (Disable/Drain Mode)
+                        const isResponse = ['http-response', 'db-result', 'storage-result'].includes(nextType);
+                        if (!isResponse && target.status === 'disabled') return false;
+
+                        // Respect Manual Traffic Control (LB/TM -> Compute)
+                        if (!isResponse && node.disabledRoutes?.includes(target.id)) {
+                            return false;
                         }
 
                         if (nextType === 'db-query') return ['sql-db', 'sql-db-premium', 'cosmos-db', 'storage-queue', 'redis', 'load-balancer', 'traffic-manager'].includes(target.type);
@@ -376,6 +404,8 @@ export const useGameLoop = () => {
 
                         if (nextType === 'http-response') return ['internet', 'traffic-manager', 'load-balancer', 'firewall', 'waf', 'storage-queue'].includes(target.type);
                         if (['http-compute', 'http-db', 'http-storage'].includes(nextType)) return ['vm', 'app-service', 'function-app', 'load-balancer', 'firewall', 'waf', 'storage-queue', 'traffic-manager'].includes(target.type);
+
+
 
                         return true;
                     });
@@ -553,6 +583,14 @@ export const useGameLoop = () => {
                                 progress: 0
                             });
                         }
+                    } else {
+                        // NO VALID TARGET = DROP
+                        penalizeIfNeeded(packet.id, packet.type, nodeId, node.position);
+
+                        // Record Drop Stat
+                        if (!nodeUpdates[nodeId]) nodeUpdates[nodeId] = { ...node, queue: [...node.queue], activeTasks: node.activeTasks ? [...node.activeTasks] : [] };
+                        const drops = nodeUpdates[nodeId].droppedPackets || {};
+                        nodeUpdates[nodeId].droppedPackets = { ...drops, [packet.type]: (drops[packet.type] || 0) + 1 };
                     }
                 });
 
@@ -624,6 +662,10 @@ export const useGameLoop = () => {
                                 connectedEdges.forEach(edge => {
                                     const isReversed = edge.target === node.id;
                                     const targetNodeId = isReversed ? edge.source : edge.target;
+                                    const targetN = nodes[targetNodeId];
+
+                                    // Check if target is disabled - if so, do not spawn (cuts off flow)
+                                    if (targetN && targetN.status === 'disabled') return;
 
                                     const GEO_REGIONS = ['North America', 'Europe', 'Asia Pacific', 'South America'];
                                     const origin = node.trafficOrigin || GEO_REGIONS[Math.floor(Math.random() * GEO_REGIONS.length)];
@@ -655,6 +697,10 @@ export const useGameLoop = () => {
                             connectedEdges.forEach(edge => {
                                 const isReversed = edge.target === node.id;
                                 const targetNodeId = isReversed ? edge.source : edge.target;
+                                const targetN = nodes[targetNodeId];
+
+                                // Check if target is disabled - if so, do not spawn
+                                if (targetN && targetN.status === 'disabled') return;
 
                                 const isAttack = Math.random() < 0.3;
                                 const candidateType: PacketType = Math.random() < 0.33 ? 'http-compute' :

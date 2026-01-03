@@ -83,11 +83,31 @@ export const Board: React.FC = () => {
                 setConnectSourceId(id);
             } else {
                 if (connectSourceId !== id) {
-                    addEdge({
-                        id: `e-${Date.now()}`,
-                        source: connectSourceId,
-                        target: id
-                    });
+                    // Multi-Connect Logic
+                    if (selectedNodeIds.has(connectSourceId)) {
+                        // The source node was part of a selection, so connect ALL selected nodes
+                        const edgesToAdd: any[] = [];
+                        selectedNodeIds.forEach(sourceId => {
+                            if (sourceId !== id) { // Prevent self-loop if target happens to be in selection (unlikely but safe)
+                                edgesToAdd.push({
+                                    id: `e-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                                    source: sourceId,
+                                    target: id
+                                });
+                            }
+                        });
+
+                        if (edgesToAdd.length > 0) {
+                            useGameStore.getState().addEdges(edgesToAdd);
+                        }
+                    } else {
+                        // Single connection
+                        addEdge({
+                            id: `e-${Date.now()}`,
+                            source: connectSourceId,
+                            target: id
+                        });
+                    }
                 }
                 setConnectSourceId(null);
             }

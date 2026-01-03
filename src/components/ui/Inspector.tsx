@@ -5,6 +5,7 @@ import { UPGRADES } from '../../config/upgrades';
 
 export const Inspector: React.FC = () => {
     const nodes = useGameStore((state) => state.nodes);
+    const edges = useGameStore((state) => state.edges);
     const regions = useGameStore((state) => state.regions);
     const sandboxMode = useGameStore((state) => state.sandboxMode);
     const money = useGameStore((state) => state.money);
@@ -100,6 +101,30 @@ export const Inspector: React.FC = () => {
                         </div>
                     )}
 
+                    {/* Node Status (Graceful Shutdown) */}
+                    <div className="flex flex-col gap-2 border-t border-gray-700 pt-3 mt-1">
+                        <label className="text-xs text-gray-400 font-bold">Node Status</label>
+                        <div className="flex items-center gap-2">
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={node.status !== 'disabled'}
+                                    onChange={(e) => updateNode(node.id, { status: e.target.checked ? 'active' : 'disabled' })}
+                                />
+                                <div className="w-9 h-5 bg-red-900/50 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600 after:bg-white"></div>
+                                <span className="ml-2 text-xs font-medium text-gray-300">
+                                    {node.status === 'disabled' ? 'DRAINING' : 'ACTIVE'}
+                                </span>
+                            </label>
+                        </div>
+                        <p className="text-[10px] text-gray-500 italic">
+                            {node.status === 'disabled'
+                                ? 'Rejecting new requests. Existing tasks will finish.'
+                                : 'Accepting new requests normally.'}
+                        </p>
+                    </div>
+
                     {/* Packet Drop Analysis (Monitor Required) */}
                     {(() => {
                         const isMonitored = Object.values(nodes).some(n => n.type === 'azure-monitor');
@@ -134,10 +159,7 @@ export const Inspector: React.FC = () => {
                     {/* Upgrades Section */}
                     {(() => {
                         // Import dynamically or assume it's available in context? Importing at top level is better.
-                        // Since I can't easily add top-level imports with Replace, I'll rely on a subsequent fix or assume I can add it now.
-                        // Wait, I can't use UPGRADES without importing it.
                         // I will add the import in a separate tool call first, or use a multi-step approach.
-                        // Let's assume I will add the import at the top of the file in the next step.
                         // For now, I will write the logic assuming UPGRADES is available.
 
                         const applicableUpgrades = Object.values(UPGRADES).filter(u => u.validTypes.includes(node.type));
@@ -190,6 +212,57 @@ export const Inspector: React.FC = () => {
                             </div>
                         );
                     })()}
+
+                    {/* Load Balancer Traffic Control */}
+                    {['load-balancer', 'traffic-manager'].includes(node.type) && (
+                        <div className="border-t border-gray-700 pt-3 mt-1">
+                            <h3 className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-2">Traffic Targets</h3>
+                            <div className="flex flex-col gap-1">
+                                {(() => {
+                                    // Find connected targets
+                                    const outgoingEdges = Object.values(edges).filter(e => e.source === node.id);
+                                    if (outgoingEdges.length === 0) {
+                                        return <p className="text-[10px] text-gray-500 italic">No connected downstream nodes.</p>;
+                                    }
+
+                                    return outgoingEdges.map(edge => {
+                                        const target = nodes[edge.target];
+                                        if (!target) return null;
+
+                                        const isDisabled = node.disabledRoutes?.includes(target.id);
+
+                                        return (
+                                            <div key={edge.id} className="flex items-center justify-between bg-gray-800/30 p-1.5 rounded border border-gray-700/50">
+                                                <div className="flex flex-col overflow-hidden">
+                                                    <span className="text-[11px] text-gray-300 font-mono truncate w-32" title={target.label}>{target.label}</span>
+                                                    <span className="text-[9px] text-gray-600 truncate">{target.type}</span>
+                                                </div>
+
+                                                <label className="relative inline-flex items-center cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="sr-only peer"
+                                                        checked={!isDisabled}
+                                                        onChange={() => {
+                                                            const newDisabled = isDisabled
+                                                                ? (node.disabledRoutes || []).filter(id => id !== target.id)
+                                                                : [...(node.disabledRoutes || []), target.id];
+
+                                                            updateNode(node.id, { disabledRoutes: newDisabled });
+                                                        }}
+                                                    />
+                                                    <div className="w-7 h-4 bg-red-900/50 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-600 after:bg-white"></div>
+                                                </label>
+                                            </div>
+                                        );
+                                    });
+                                })()}
+                            </div>
+                            <p className="text-[9px] text-gray-500 italic mt-2">
+                                Disabled paths will drain existing flows but reject new requests.
+                            </p>
+                        </div>
+                    )}
                 </div>
             );
         }

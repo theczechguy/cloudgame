@@ -147,7 +147,7 @@ export const StatsHUD: React.FC = () => {
             <div className="sticky top-0 bg-black/5 rounded-lg p-2 backdrop-blur-md border border-white/5 z-10 shadow-lg">
                 <div className="flex justify-between items-start">
                     <div>
-                        <div className="text-2xl font-bold text-green-400 font-sans tracking-tight">${money.toFixed(0)}</div>
+                        <div className={`text-2xl font-bold font-sans tracking-tight ${money < 0 ? 'text-red-500 animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'text-green-400'}`}>${money.toFixed(0)}</div>
                         <div className={`text-xs font-bold ${recentIncome >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {recentIncome >= 0 ? '+' : ''}${recentIncome.toFixed(1)}/s
                         </div>

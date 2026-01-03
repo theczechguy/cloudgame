@@ -61,9 +61,13 @@ export interface GameNode {
     droppedPackets?: Record<string, number>; // { 'http-compute': 10, 'http-db': 5 }
     upgrades?: string[]; // List of active upgrade IDs (e.g., 'smart-routing')
     roundRobinIndex?: number; // For non-smart LB rotation
+    status?: 'active' | 'disabled'; // For graceful shutdown / draining
 
     // Serverless specific
     freeRequestsRemaining?: number;
+
+    // Load Balancer / Traffic Manager specific
+    disabledRoutes?: string[]; // IDs of connected nodes to which traffic is manually disabled (draining)
 
     // Internet specific
     trafficOrigin?: string; // Forced origin for spawned packets
