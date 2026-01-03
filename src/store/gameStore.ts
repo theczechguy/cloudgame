@@ -37,6 +37,7 @@ interface GameStore extends GameState {
     setGameMode: (mode: 'sandbox' | 'story' | null) => void;
     setStoryStage: (stage: number) => void;
     resetToStoryState: () => void;
+    resetToSandboxState: () => void;
     setWaveConfig: (config: TrafficConfig[] | null) => void;
     setWaveIndex: (index: number) => void;
 
@@ -215,6 +216,25 @@ export const useGameStore = create<GameStore>((set) => ({
         isGameOver: false,
         gameOverReason: null
     }),
+    resetToSandboxState: () => set({
+        gameMode: 'sandbox',
+        sandboxMode: true,
+        money: 10000,
+        regions: {},
+        currentWaveIndex: 0,
+        nodes: {
+            'internet-1': { id: 'internet-1', type: 'internet', position: { x: 1300, y: 1300 }, label: 'Internet', queue: [], maxQueueSize: 0, processingSpeed: 0, utilization: 0 },
+        },
+        nodeIds: ['internet-1'],
+        edges: {},
+        packets: [],
+        storyStage: 0,
+        activeTrafficConfig: null, // Full traffic capability
+        showStoryIntro: false,
+        isGameOver: false,
+        gameOverReason: null,
+        spawnRate: 100 // Fast spawn for sandbox
+    }),
 
     showStoryIntro: false,
     setShowStoryIntro: (show) => set({ showStoryIntro: show }),
@@ -337,7 +357,6 @@ export const useGameStore = create<GameStore>((set) => ({
 
         edges.forEach(edge => {
             const sourceNode = state.nodes[edge.source];
-            const targetNode = state.nodes[edge.target];
 
             // 1. Validation: Internet Node Limit (Outgoing)
             if (sourceNode?.type === 'internet') {

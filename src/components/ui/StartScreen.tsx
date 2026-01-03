@@ -2,10 +2,10 @@ import React from 'react';
 import { useGameStore } from '../../store/gameStore';
 
 export const StartScreen: React.FC = () => {
-    const setGameMode = useGameStore((state) => state.setGameMode);
     const setSpawnRate = useGameStore((state) => state.setSpawnRate);
     const addNotification = useGameStore((state) => state.addNotification);
     const resetToStoryState = useGameStore((state) => state.resetToStoryState);
+    const resetToSandboxState = useGameStore((state) => state.resetToSandboxState);
 
     const handleStartStory = () => {
         resetToStoryState();
@@ -16,8 +16,7 @@ export const StartScreen: React.FC = () => {
     };
 
     const handleStartSandbox = () => {
-        setGameMode('sandbox');
-        setSpawnRate(100); // Fast for sandbox (10 req/s)
+        resetToSandboxState();
         addNotification("Sandbox Mode: Build whatever you want!", "info");
     };
 
